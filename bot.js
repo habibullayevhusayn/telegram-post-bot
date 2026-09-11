@@ -246,7 +246,7 @@ function confirmationKeyboard(ctx) {
 }
 
 function postButtons(post) {
-  return [...(post.buttons || []), mandatoryDeveloperButton()];
+  return post.buttons || [];
 }
 
 async function sendPreview(ctx) {
@@ -277,12 +277,6 @@ function buttonStyleKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '🔴 Qizil'), 'button_style:danger')],
     [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
   ]);
-}
-
-function mandatoryDeveloperButton() {
-  const styles = ['primary', 'success', 'danger'];
-  const style = styles[Math.floor(Math.random() * styles.length)];
-  return [{ text: '👨‍💻 Developer', url: 'https://t.me/admn28', style }];
 }
 
 function isUrl(value) {
