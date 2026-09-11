@@ -134,8 +134,7 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📊 Statistika'), 'admin:stats')],
     [Markup.button.callback(localizeReply(ctx, '📣 Barchaga post yuborish'), 'admin:broadcast')],
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
-    [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
-    [Markup.button.callback('📥 JSON faylni olish', 'admin:backup')]
+    [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')]
   ]);
 }
 
@@ -363,6 +362,8 @@ bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard(
 
 bot.command('channels', showChannels);
 
+// --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I --
+
 bot.hears(Object.values(text.channels), showChannels);
 bot.hears(Object.values(text.addChannel), (ctx) => {
   ctx.session = { step: 'channel' };
@@ -386,19 +387,6 @@ bot.action('admin:stats', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   return ctx.reply(statsText()[userLanguage(ctx)] || statsText().uz, adminKeyboard(ctx));
-});
-
-bot.action('admin:backup', async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  try {
-    if (fs.existsSync(dataPath)) {
-      return ctx.replyWithDocument({ source: dataPath, filename: 'data.json' });
-    }
-    return ctx.reply("Hozircha ma'lumotlar bazasi bo'sh.");
-  } catch (error) {
-    return ctx.reply(`Xatolik: ${error.message}`);
-  }
 });
 
 bot.action('admin:subscription', async (ctx) => {
