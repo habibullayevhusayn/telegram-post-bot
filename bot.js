@@ -362,6 +362,22 @@ bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard(
 
 bot.command('channels', showChannels);
 
+// --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I ---
+bot.command('backup', async (ctx) => {
+  if (ctx.from.username !== ADMIN_USERNAME) {
+    return ctx.reply("Ruxsat yo'q.");
+  }
+  try {
+    if (fs.existsSync(dataPath)) {
+      await ctx.replyWithDocument({ source: dataPath, filename: 'data.json' });
+    } else {
+      ctx.reply("Hozircha ma'lumotlar bazasi bo'sh.");
+    }
+  } catch (error) {
+    ctx.reply("Xatolik: " + error.message);
+  }
+});
+
 bot.hears(Object.values(text.channels), showChannels);
 bot.hears(Object.values(text.addChannel), (ctx) => {
   ctx.session = { step: 'channel' };
