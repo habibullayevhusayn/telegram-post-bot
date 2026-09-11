@@ -1,5 +1,8 @@
 require('dotenv').config();
-
+const express = require('express');
+const app = express();
+app.get('/', (req, res) => res.send('Bot ishlamoqda...'));
+app.listen(process.env.PORT || 3000);
 const fs = require('node:fs');
 const path = require('node:path');
 const { Telegraf, Markup, session } = require('telegraf');
