@@ -42,7 +42,8 @@ const text = {
   settings: { uz: '⚙️ Sozlamalar', en: '⚙️ Settings', ru: '⚙️ Настройки', ar: '⚙️ الإعدادات', tr: '⚙️ Ayarlar', zh: '⚙️ 设置', ko: '⚙️ 설정', tg: '⚙️ Танзимот' },
   admin: { uz: '🛠 Admin panel', en: '🛠 Admin panel', ru: '🛠 Панель администратора', ar: '🛠 لوحة المشرف', tr: '🛠 Yönetici paneli', zh: '🛠 管理员面板', ko: '🛠 관리자 패널', tg: '🛠 Панели админ' },
   languageSaved: { uz: '✅ Til saqlandi.', en: '✅ Language saved.', ru: '✅ Язык сохранён.', ar: '✅ تم حفظ اللغة.', tr: '✅ Dil kaydedildi.', zh: '✅ 语言已保存。', ko: '✅ 언어가 저장되었습니다.', tg: '✅ Забон нигоҳ дошта шуд.' },
-  createPost: { uz: '📨 Post yuborish', en: '📨 Create Post', ru: '📨 Создать пост', ar: '📨 إنشاء منشور', tr: '📨 Gönderi oluştur', zh: '📨 创建帖子', ko: '📨 게시물 만들기', tg: '📨 Эҷоди пост' }
+  createPost: { uz: '📨 Post yuborish', en: '📨 Create Post', ru: '📨 Создать пост', ar: '📨 إنشاء منشور', tr: '📨 Gönderi oluştur', zh: '📨 创建帖子', ko: '📨 게시물 만들기', tg: '📨 Эҷоди пост' },
+  videoSave: { uz: '🎬 Video saqlash', en: '🎬 Save video', ru: '🎬 Сохранить видео', ar: '🎬 حفظ فيديو', tr: '🎬 Video kaydet', zh: '🎬 保存视频', ko: '🎬 영상 저장', tg: '🎬 Сабти видео' }
 };
 const replyTranslations = {
   en: {
@@ -140,7 +141,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'createPost'), tr(ctx, 'settings')]];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'createPost')], [tr(ctx, 'videoSave'), tr(ctx, 'settings')]];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -295,6 +296,36 @@ function buttonStyleKeyboard(ctx) {
   ]);
 }
 
+async function sendMediaFromUrl(ctx, url) {
+  const lower = String(url).trim().toLowerCase();
+  const isVideo = /\.(mp4|mov|m4v|webm|ogg|avi)(\?|$)/.test(lower) || /video/.test(lower);
+  const isPhoto = /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/.test(lower) || /photo/.test(lower);
+  const botAddress = process.env.BOT_LINK || 'https://t.me/your_bot_username';
+  const footer = `\n\n📍 Bot manzili: ${botAddress}`;
+
+  try {
+    if (isVideo) {
+      await ctx.telegram.sendVideo(ctx.chat.id, url, {
+        caption: footer,
+        supports_streaming: true
+      });
+      return ctx.reply('✅ Video yuborildi.', mainKeyboard(ctx));
+    }
+
+    if (isPhoto || !isVideo) {
+      await ctx.telegram.sendPhoto(ctx.chat.id, url, {
+        caption: footer
+      });
+      return ctx.reply('✅ Media yuborildi.', mainKeyboard(ctx));
+    }
+
+    return ctx.reply('Iltimos, rasm yoki video URL yuboring.', mainKeyboard(ctx));
+  } catch (error) {
+    console.error('Media send failed:', error);
+    return ctx.reply('Media URL ni yuborishda xatolik yuz berdi.', mainKeyboard(ctx));
+  }
+}
+
 function isUrl(value) {
   try {
     const url = new URL(value);
@@ -381,6 +412,10 @@ bot.command('channels', showChannels);
 // --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I --
 
 bot.hears(Object.values(text.createPost), showChannels);
+bot.hears(Object.values(text.videoSave), (ctx) => {
+  ctx.session = { step: 'media_url' };
+  return ctx.reply('Ijtimoiy tarmoqdan rasm/video URL yuboring:', Markup.removeKeyboard());
+});
 bot.hears(Object.values(text.channels), showChannels);
 bot.hears(Object.values(text.addChannel), (ctx) => {
   ctx.session = { step: 'channel' };
@@ -575,6 +610,12 @@ bot.on('text', async (ctx) => {
   const sessionState = ctx.session || {};
   const text = ctx.message.text;
   const trimmedText = text.trim();
+
+  if (sessionState.step === 'media_url') {
+    if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
+    sessionState.step = null;
+    return sendMediaFromUrl(ctx, trimmedText);
+  }
 
   if (sessionState.step === 'required_subscription_channel') {
     if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
