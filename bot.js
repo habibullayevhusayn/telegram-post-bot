@@ -108,17 +108,7 @@ function userData(userId) {
 }
 
 function userLanguage(ctx) {
-  // Agar so'rov Telegram foydalanuvchisidan kelmagan bo'lsa (masalan UptimeRobot bo'lsa), 'uz' qaytaradi
-  if (!ctx || !ctx.from || !ctx.from.id) {
-    return 'uz';
-  }
-  
-  // Agarda foydalanuvchi bazada bo'lsa tilini oladi, bo'lmasa 'uz'
-  if (data.users && data.users[ctx.from.id]) {
-    return data.users[ctx.from.id].language || 'uz';
-  }
-  
-  return 'uz';
+  return userData(ctx.from.id).language || 'uz';
 }
 
 function tr(ctx, key, fallback = key) {
@@ -626,27 +616,9 @@ bot.on('text', async (ctx) => {
 
 bot.catch((error, ctx) => {
   console.error(`Update ${ctx.updateType} failed:`, error);
-  if (ctx && ctx.from) {
-    ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
-  }
+  ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
 });
 
-// --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I ---
-bot.command('backup', async (ctx) => {
-  if (!ctx.from || ctx.from.username !== ADMIN_USERNAME) {
-    return ctx.reply("Ruxsat yo'q.");
-  }
-  try {
-    if (fs.existsSync(dataPath)) {
-      await ctx.replyWithDocument({ source: dataPath, filename: 'data.json' });
-    } else {
-      ctx.reply("Hozircha ma'lumotlar bazasi bo'sh.");
-    }
-  } catch (error) {
-    ctx.reply("Xatolik: " + error.message);
-  }
-});
-
-bot.launch().then(() => console.log('Bot Render va Telegram-da muvaffaqiyatli ishga tushdi.'));
+bot.launch().then(() => console.log('Bot ishga tushdi.'));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
