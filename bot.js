@@ -162,7 +162,7 @@ function statsText() {
   const broadcasts = data.stats.broadcastsSent || 0;
   return { uz: `📊 Bot statistikasi\n\n👤 Barcha foydalanuvchilar: ${users.length}\n📢 Barcha kanallar: ${channels}\n📨 Yuborilgan postlar: ${posts}\n📣 Broadcastlar: ${broadcasts}`, en: `📊 Bot statistics\n\n👤 All users: ${users.length}\n📢 All channels: ${channels}\n📨 Posts sent: ${posts}\n📣 Broadcasts: ${broadcasts}`, ru: `📊 Статистика бота\n\n👤 Все пользователи: ${users.length}\n📢 Все каналы: ${channels}\n📨 Отправлено постов: ${posts}\n📣 Рассылки: ${broadcasts}`, tr: `📊 Bot istatistikası\n\n👤 Tüm kullanıcılar: ${users.length}\n📢 Tüm kanallar: ${channels}\n📨 Gönderilen gönderiler: ${posts}\n📣 Yayınlar: ${broadcasts}`, ar: `📊 إحصائيات البوت\n\n👤 جميع المستخدمين: ${users.length}\n📢 جميع القنوات: ${channels}\n📨 المنشورات المرسلة: ${posts}\n📣 الإرسالات: ${broadcasts}`, zh: `📊 机器人统计\n\n👤 用户总数：${users.length}\n📢 频道总数：${channels}\n📨 已发送帖子：${posts}\n📣 广播：${broadcasts}`, ko: `📊 봇 통계\n\n👤 전체 사용자: ${users.length}\n📢 전체 채널: ${channels}\n📨 보낸 게시물: ${posts}\n📣 방송: ${broadcasts}`, tg: `📊 Омори бот\n\n👤 Ҳамаи корбарон: ${users.length}\n📢 Ҳамаи каналҳо: ${channels}\n📨 Постҳои фиристодашуда: ${posts}\n📣 Ирсолҳо: ${broadcasts}` };
 }
-if (!ctx || !ctx.from || !ctx.from.id) return;
+
 async function requiredSubscription(ctx) {
   const channel = data.settings?.requiredChannel;
   if (!channel || isAdmin(ctx)) return true;
@@ -626,9 +626,27 @@ bot.on('text', async (ctx) => {
 
 bot.catch((error, ctx) => {
   console.error(`Update ${ctx.updateType} failed:`, error);
-  ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
+  if (ctx && ctx.from) {
+    ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
+  }
 });
 
-bot.launch().then(() => console.log('Bot ishga tushdi.'));
+// --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I ---
+bot.command('backup', async (ctx) => {
+  if (!ctx.from || ctx.from.username !== ADMIN_USERNAME) {
+    return ctx.reply("Ruxsat yo'q.");
+  }
+  try {
+    if (fs.existsSync(dataPath)) {
+      await ctx.replyWithDocument({ source: dataPath, filename: 'data.json' });
+    } else {
+      ctx.reply("Hozircha ma'lumotlar bazasi bo'sh.");
+    }
+  } catch (error) {
+    ctx.reply("Xatolik: " + error.message);
+  }
+});
+
+bot.launch().then(() => console.log('Bot Render va Telegram-da muvaffaqiyatli ishga tushdi.'));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
