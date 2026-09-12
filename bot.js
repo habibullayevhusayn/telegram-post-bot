@@ -41,7 +41,8 @@ const text = {
   addChannel: { uz: '➕ Kanal qo\'shish', en: '➕ Add channel', ru: '➕ Добавить канал', ar: '➕ إضافة قناة', tr: '➕ Kanal ekle', zh: '➕ 添加频道', ko: '➕ 채널 추가', tg: '➕ Иловаи канал' },
   settings: { uz: '⚙️ Sozlamalar', en: '⚙️ Settings', ru: '⚙️ Настройки', ar: '⚙️ الإعدادات', tr: '⚙️ Ayarlar', zh: '⚙️ 设置', ko: '⚙️ 설정', tg: '⚙️ Танзимот' },
   admin: { uz: '🛠 Admin panel', en: '🛠 Admin panel', ru: '🛠 Панель администратора', ar: '🛠 لوحة المشرف', tr: '🛠 Yönetici paneli', zh: '🛠 管理员面板', ko: '🛠 관리자 패널', tg: '🛠 Панели админ' },
-  languageSaved: { uz: '✅ Til saqlandi.', en: '✅ Language saved.', ru: '✅ Язык сохранён.', ar: '✅ تم حفظ اللغة.', tr: '✅ Dil kaydedildi.', zh: '✅ 语言已保存。', ko: '✅ 언어가 저장되었습니다.', tg: '✅ Забон нигоҳ дошта шуд.' }
+  languageSaved: { uz: '✅ Til saqlandi.', en: '✅ Language saved.', ru: '✅ Язык сохранён.', ar: '✅ تم حفظ اللغة.', tr: '✅ Dil kaydedildi.', zh: '✅ 语言已保存。', ko: '✅ 언어가 저장되었습니다.', tg: '✅ Забон нигоҳ дошта шуд.' },
+  createPost: { uz: '📨 Post yuborish', en: '📨 Create Post', ru: '📨 Создать пост', ar: '📨 إنشاء منشور', tr: '📨 Gönderi oluştur', zh: '📨 创建帖子', ko: '📨 게시물 만들기', tg: '📨 Эҷоди пост' }
 };
 const replyTranslations = {
   en: {
@@ -139,7 +140,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')]];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'createPost'), tr(ctx, 'settings')]];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -379,6 +380,7 @@ bot.command('channels', showChannels);
 
 // --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I --
 
+bot.hears(Object.values(text.createPost), showChannels);
 bot.hears(Object.values(text.channels), showChannels);
 bot.hears(Object.values(text.addChannel), (ctx) => {
   ctx.session = { step: 'channel' };
