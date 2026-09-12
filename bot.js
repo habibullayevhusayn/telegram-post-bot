@@ -20,6 +20,7 @@ process.on('uncaughtException', (error) => {
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { Telegraf, Markup, session } = require('telegraf');
 
 const token = process.env.BOT_TOKEN;
@@ -30,6 +31,17 @@ if (!token) {
 const bot = new Telegraf(token);
 const dataPath = path.join(__dirname, 'data.json');
 const data = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { users: {} };
+data.users ||= {};
+data.settings ||= {};
+data.settings.requiredChannels ||= [];
+if (data.settings.requiredChannel && !Array.isArray(data.settings.requiredChannels)) {
+  data.settings.requiredChannels = [data.settings.requiredChannel];
+}
+if (data.settings.requiredChannel && Array.isArray(data.settings.requiredChannels)) {
+  data.settings.requiredChannels.unshift(data.settings.requiredChannel);
+  delete data.settings.requiredChannel;
+}
+if (!Array.isArray(data.settings.requiredChannels)) data.settings.requiredChannels = [];
 const ADMIN_USERNAME = 'habibullayev_28';
 const languages = {
   uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
@@ -90,7 +102,7 @@ const replyTranslations = {
 const keyboardTranslations = {
   en: { '➕ Kanal qo\'shish': '➕ Add channel', '✍️ Post yaratish': '✍️ Create post', '🗑 Kanalni o\'chirish': '🗑 Remove channel', '⬅️ Orqaga': '⬅️ Back', '🔗 Havolali tugma qo\'shish': '🔗 Add URL button', '✅ Postni yuborish': '✅ Publish post', '❌ Bekor qilish': '❌ Cancel', '🔵 Ko\'k': '🔵 Blue', '🟢 Yashil': '🟢 Green', '🔴 Qizil': '🔴 Red', '📊 Statistika': '📊 Statistics', '📣 Barchaga post yuborish': '📣 Broadcast post', '📢 Majburiy obunani sozlash': '📢 Set required subscription', '❌ Majburiy obunani o\'chirish': '❌ Disable required subscription', '📢 Kanalga obuna bo\'lish': '📢 Subscribe to channel', '✅ Obunani tekshirish': '✅ Check subscription' },
   ru: { '➕ Kanal qo\'shish': '➕ Добавить канал', '✍️ Post yaratish': '✍️ Создать пост', '🗑 Kanalni o\'chirish': '🗑 Удалить канал', '⬅️ Orqaga': '⬅️ Назад', '🔗 Havolali tugma qo\'shish': '🔗 Добавить URL-кнопку', '✅ Postni yuborish': '✅ Опубликовать', '❌ Bekor qilish': '❌ Отмена', '🔵 Ko\'k': '🔵 Синий', '🟢 Yashil': '🟢 Зелёный', '🔴 Qizil': '🔴 Красный', '📊 Statistika': '📊 Статистика', '📣 Barchaga post yuborish': '📣 Рассылка поста', '📢 Majburiy obunani sozlash': '📢 Настроить подписку', '❌ Majburiy obunani o\'chirish': '❌ Отключить подписку', '📢 Kanalga obuna bo\'lish': '📢 Подписаться', '✅ Obunani tekshirish': '✅ Проверить подписку' },
-  tr: { '➕ Kanal qo\'shish': '➕ Kanal ekle', '✍️ Post yaratish': '✍️ Gönderi oluştur', '🗑 Kanalni o\'chirish': '🗑 Kanalı sil', '⬅️ Orqaga': '⬅️ Geri', '🔗 Havolali tugma qo\'shish': '🔗 URL butonu ekle', '✅ Postni yuborish': '✅ Gönderiyi yayınla', '❌ Bekor qilish': '❌ İptal', '🔵 Ko\'k': '🔵 Mavi', '🟢 Yashil': '🟢 Yeşil', '🔴 Qizil': '🔴 Kırmızı', '📊 Statistika': '📊 İstatistik', '📣 Barchaga post yuborish': '📣 Herkese gönder', '📢 Majburiy obunani sozlash': '📢 Zorunlu abonelik', '❌ Majburiy obunani o\'chirish': '❌ Aboneliği kapat', '📢 Kanalga obuna bo\'lish': '📢 Kanala abone ol', '✅ Obunani tekshirish': '✅ Aboneliği kontrol et' },
+  tr: { '➕ Kanal qo\'shish': '➕ Kanal ekle', '✍️ Post yaratish': '✍️ Gönderi oluştur', '🗑 Kanalni o\'chirish': '🗑 Kanalı sil', '⬅️ Orqaga': '⬅️ Geri', '🔗 Havolali tugma qo\'shish': '🔗 URL butonu ekle', '✅ Postni yuborish': '✅ Gönderiyi yayınla', '❌ Bekor qilish': '❌ İptal', '🔵 Ko\'k': '🔵 Mavi', '🟢 Yashil': '🟢 Yeşil', '🔴 Qizil': '🔴 Kırmızı', '📊 Statistika': '📊 İstatistik', '📣 Barchaga post yuborish': '📣 Herkese gönder', '📢 Majburiy obunani sozlash': '📢 Zorunlu abonelik', '📋 Majburiy obuna kanallar ro\'yxati': '📋 Zorunlu abonelik kanalları listesi', '❌ Majburiy obunani o\'chirish': '❌ Aboneliği kapat', '📢 Kanalga obuna bo\'lish': '📢 Kanala abone ol', '✅ Obunani tekshirish': '✅ Aboneliği kontrol et' },
   ar: { '➕ Kanal qo\'shish': '➕ إضافة قناة', '✍️ Post yaratish': '✍️ إنشاء منشور', '🗑 Kanalni o\'chirish': '🗑 حذف القناة', '⬅️ Orqaga': '⬅️ رجوع', '🔗 Havolali tugma qo\'shish': '🔗 إضافة زر رابط', '✅ Postni yuborish': '✅ نشر المنشور', '❌ Bekor qilish': '❌ إلغاء', '🔵 Ko\'k': '🔵 أزرق', '🟢 Yashil': '🟢 أخضر', '🔴 Qizil': '🔴 أحمر', '📊 Statistika': '📊 الإحصائيات', '📣 Barchaga post yuborish': '📣 إرسال للجميع', '📢 Majburiy obunani sozlash': '📢 إعداد الاشتراك', '❌ Majburiy obunani o\'chirish': '❌ تعطيل الاشتراك', '📢 Kanalga obuna bo\'lish': '📢 اشترك بالقناة', '✅ Obunani tekshirish': '✅ تحقق من الاشتراك' },
   zh: { '➕ Kanal qo\'shish': '➕ 添加频道', '✍️ Post yaratish': '✍️ 创建帖子', '🗑 Kanalni o\'chirish': '🗑 删除频道', '⬅️ Orqaga': '⬅️ 返回', '🔗 Havolali tugma qo\'shish': '🔗 添加链接按钮', '✅ Postni yuborish': '✅ 发布帖子', '❌ Bekor qilish': '❌ 取消', '🔵 Ko\'k': '🔵 蓝色', '🟢 Yashil': '🟢 绿色', '🔴 Qizil': '🔴 红色', '📊 Statistika': '📊 统计', '📣 Barchaga post yuborish': '📣 广播帖子', '📢 Majburiy obunani sozlash': '📢 设置强制订阅', '❌ Majburiy obunani o\'chirish': '❌ 关闭强制订阅', '📢 Kanalga obuna bo\'lish': '📢 订阅频道', '✅ Obunani tekshirish': '✅ 检查订阅' },
   ko: { '➕ Kanal qo\'shish': '➕ 채널 추가', '✍️ Post yaratish': '✍️ 게시물 만들기', '🗑 Kanalni o\'chirish': '🗑 채널 삭제', '⬅️ Orqaga': '⬅️ 뒤로', '🔗 Havolali tugma qo\'shish': '🔗 URL 버튼 추가', '✅ Postni yuborish': '✅ 게시물 게시', '❌ Bekor qilish': '❌ 취소', '🔵 Ko\'k': '🔵 파란색', '🟢 Yashil': '🟢 초록색', '🔴 Qizil': '🔴 빨간색', '📊 Statistika': '📊 통계', '📣 Barchaga post yuborish': '📣 전체 방송', '📢 Majburiy obunani sozlash': '📢 필수 구독 설정', '❌ Majburiy obunani o\'chirish': '❌ 필수 구독 해제', '📢 Kanalga obuna bo\'lish': '📢 채널 구독', '✅ Obunani tekshirish': '✅ 구독 확인' },
@@ -151,6 +163,7 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📊 Statistika'), 'admin:stats')],
     [Markup.button.callback(localizeReply(ctx, '📣 Barchaga post yuborish'), 'admin:broadcast')],
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
+    [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
     [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')]
   ]);
 }
@@ -171,18 +184,25 @@ function statsText() {
 }
 
 async function requiredSubscription(ctx) {
-  const channel = data.settings?.requiredChannel;
-  if (!channel || isAdmin(ctx)) return true;
-  try {
-    const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
-    if (['creator', 'administrator', 'member'].includes(member.status)) return true;
-  } catch (error) {
-    console.error('Subscription check failed:', error.response?.description || error.message);
+  if (isAdmin(ctx)) return true;
+  const channels = getRequiredChannels();
+  if (!channels.length) return true;
+
+  for (const channel of channels) {
+    try {
+      const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
+      if (!['creator', 'administrator', 'member'].includes(member.status)) {
+        await ctx.reply(`Botdan foydalanish uchun ${channel.title || channel.username} kanaliga obuna bo\'ling.`, subscriptionKeyboard(ctx, channel));
+        return false;
+      }
+    } catch (error) {
+      console.error('Subscription check failed:', error.response?.description || error.message);
+      await ctx.reply(`Botdan foydalanish uchun ${channel.title || channel.username} kanaliga obuna bo\'ling.`, subscriptionKeyboard(ctx, channel));
+      return false;
+    }
   }
 
-  const subscriptionText = { uz: `Botdan foydalanish uchun ${channel.title} kanaliga obuna bo\'ling.`, en: `Subscribe to ${channel.title} to use the bot.`, ru: `Подпишитесь на ${channel.title}, чтобы пользоваться ботом.`, tr: `Botu kullanmak için ${channel.title} kanalına abone olun.`, ar: `اشترك في ${channel.title} لاستخدام البوت.`, zh: `请订阅 ${channel.title} 后使用机器人。`, ko: `${channel.title} 채널을 구독해야 봇을 사용할 수 있습니다.`, tg: `Барои истифодаи бот ба канали ${channel.title} обуна шавед.` };
-  await ctx.reply(subscriptionText[userLanguage(ctx)] || subscriptionText.uz, subscriptionKeyboard(ctx, channel));
-  return false;
+  return true;
 }
 
 async function checkRequiredSubscriptionChannel(ctx, username) {
@@ -196,21 +216,39 @@ async function checkRequiredSubscriptionChannel(ctx, username) {
   return { id: chat.id, title: chat.title || username, username: `@${chat.username}` };
 }
 
+function getRequiredChannels() {
+  const list = Array.isArray(data.settings?.requiredChannels) ? data.settings.requiredChannels : [];
+  if (data.settings?.requiredChannel && !list.some((item) => item.id === data.settings.requiredChannel.id)) {
+    list.push(data.settings.requiredChannel);
+  }
+  return list;
+}
+
+function formatRequiredChannelList() {
+  const channels = getRequiredChannels();
+  if (!channels.length) return 'Majburiy obuna kanallari yo\'q.';
+  return channels.map((channel) => `${channel.title || channel.username} (${channel.username || ''})`).join('\n');
+}
+
 async function broadcastPost(ctx, post) {
   const recipients = new Set(Object.keys(data.users || {}));
   for (const account of Object.values(data.users || {})) {
     for (const channel of account.channels || []) recipients.add(String(channel.id));
   }
-  if (data.settings.requiredChannel) recipients.add(String(data.settings.requiredChannel.id));
+  for (const channel of getRequiredChannels()) {
+    recipients.add(String(channel.id));
+  }
 
   const buttons = post.finalButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
   let sent = 0;
   for (const chatId of recipients) {
     try {
-      if (data.settings.requiredChannel && Number(chatId) > 0) {
-        const member = await ctx.telegram.getChatMember(data.settings.requiredChannel.id, Number(chatId));
-        if (!['creator', 'administrator', 'member'].includes(member.status)) continue;
+      for (const required of getRequiredChannels()) {
+        if (Number(chatId) > 0 && required?.id) {
+          const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
+          if (!['creator', 'administrator', 'member'].includes(member.status)) continue;
+        }
       }
       if (post.photo) {
         await ctx.telegram.sendPhoto(chatId, post.photo, {
@@ -287,36 +325,30 @@ async function sendPreview(ctx) {
   return ctx.reply('👀 Preview tayyor. Yuborishni tasdiqlaysizmi?', confirmationKeyboard(ctx));
 }
 
-function buttonStyleKeyboard(ctx) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback(localizeReply(ctx, '🔵 Ko\'k'), 'button_style:primary')],
-    [Markup.button.callback(localizeReply(ctx, '🟢 Yashil'), 'button_style:success')],
-    [Markup.button.callback(localizeReply(ctx, '🔴 Qizil'), 'button_style:danger')],
-    [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
-  ]);
-}
-
 async function sendMediaFromUrl(ctx, url) {
   const lower = String(url).trim().toLowerCase();
-  const isVideo = /\.(mp4|mov|m4v|webm|ogg|avi)(\?|$)/.test(lower) || /video/.test(lower);
-  const isPhoto = /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/.test(lower) || /photo/.test(lower);
-  const botAddress = process.env.BOT_LINK || 'https://t.me/your_bot_username';
+  const botAddress = process.env.BOT_LINK || process.env.BOT_ID || 'https://t.me/your_bot_username';
   const footer = `\n\n📍 Bot manzili: ${botAddress}`;
 
   try {
-    if (isVideo) {
-      await ctx.telegram.sendVideo(ctx.chat.id, url, {
-        caption: footer,
-        supports_streaming: true
-      });
+    if (/youtube\.com|youtu\.be|instagram\.com|instagr\.am|tiktok\.com|x\.com|twitter\.com|fb\.com|facebook\.com|vk\.com|vimeo\.com/.test(lower)) {
+      const output = path.join(__dirname, 'tmp-media', `media-${Date.now()}.mp4`);
+      const ytdlp = spawnSync('yt-dlp', ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '-o', output, url], { encoding: 'utf8' });
+      if (ytdlp.status !== 0 || !fs.existsSync(output)) {
+        return ctx.reply('Ushbu URL dan video olib bo\'lmadi. To\'g\'ri public video yoki media URL yuboring.', mainKeyboard(ctx));
+      }
+      await ctx.telegram.sendVideo(ctx.chat.id, { source: fs.createReadStream(output), filename: 'media.mp4' }, { caption: footer, supports_streaming: true });
       return ctx.reply('✅ Video yuborildi.', mainKeyboard(ctx));
     }
 
-    if (isPhoto || !isVideo) {
-      await ctx.telegram.sendPhoto(ctx.chat.id, url, {
-        caption: footer
-      });
-      return ctx.reply('✅ Media yuborildi.', mainKeyboard(ctx));
+    if (/\.(mp4|mov|m4v|webm|ogg|avi)(\?|$)/.test(lower)) {
+      await ctx.telegram.sendVideo(ctx.chat.id, url, { caption: footer, supports_streaming: true });
+      return ctx.reply('✅ Video yuborildi.', mainKeyboard(ctx));
+    }
+
+    if (/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/.test(lower)) {
+      await ctx.telegram.sendPhoto(ctx.chat.id, url, { caption: footer });
+      return ctx.reply('✅ Rasm yuborildi.', mainKeyboard(ctx));
     }
 
     return ctx.reply('Iltimos, rasm yoki video URL yuboring.', mainKeyboard(ctx));
@@ -324,6 +356,15 @@ async function sendMediaFromUrl(ctx, url) {
     console.error('Media send failed:', error);
     return ctx.reply('Media URL ni yuborishda xatolik yuz berdi.', mainKeyboard(ctx));
   }
+}
+
+function buttonStyleKeyboard(ctx) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(localizeReply(ctx, '🔵 Ko\'k'), 'button_style:primary')],
+    [Markup.button.callback(localizeReply(ctx, '🟢 Yashil'), 'button_style:success')],
+    [Markup.button.callback(localizeReply(ctx, '🔴 Qizil'), 'button_style:danger')],
+    [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
+  ]);
 }
 
 function isUrl(value) {
@@ -448,12 +489,25 @@ bot.action('admin:subscription', async (ctx) => {
   return ctx.reply('Majburiy obuna kanalining public username sini yuboring, masalan: @my_channel');
 });
 
+bot.action('admin:required_list', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  return ctx.reply(formatRequiredChannelList(), adminKeyboard(ctx));
+});
+
 bot.action('admin:subscription_off', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  data.settings.requiredChannels = [];
   data.settings.requiredChannel = undefined;
   saveData();
   return ctx.reply('✅ Majburiy obuna o\'chirildi.', adminKeyboard(ctx));
+});
+
+bot.action('admin:required_list', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  return ctx.reply(formatRequiredChannelList(), adminKeyboard(ctx));
 });
 
 bot.action('admin:broadcast', async (ctx) => {
@@ -620,10 +674,15 @@ bot.on('text', async (ctx) => {
   if (sessionState.step === 'required_subscription_channel') {
     if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
     try {
-      data.settings.requiredChannel = await checkRequiredSubscriptionChannel(ctx, normalizeChannel(trimmedText));
+      const channel = await checkRequiredSubscriptionChannel(ctx, normalizeChannel(trimmedText));
+      data.settings.requiredChannels ||= [];
+      if (!data.settings.requiredChannels.some((item) => item.id === channel.id)) {
+        data.settings.requiredChannels.push(channel);
+      }
+      data.settings.requiredChannel = channel;
       saveData();
       reset(ctx);
-      return ctx.reply(`✅ ${data.settings.requiredChannel.title} majburiy obuna kanali qilib sozlandi.`, adminKeyboard(ctx));
+      return ctx.reply(`✅ ${channel.title} majburiy obuna kanali qilib sozlandi.`, adminKeyboard(ctx));
     } catch (error) {
       return ctx.reply(`❌ ${error.message}`);
     }
