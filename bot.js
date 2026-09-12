@@ -108,7 +108,17 @@ function userData(userId) {
 }
 
 function userLanguage(ctx) {
-  return userData(ctx.from.id).language || 'uz';
+  // Agar so'rov Telegram foydalanuvchisidan kelmagan bo'lsa (masalan UptimeRobot bo'lsa), 'uz' qaytaradi
+  if (!ctx || !ctx.from || !ctx.from.id) {
+    return 'uz';
+  }
+  
+  // Agarda foydalanuvchi bazada bo'lsa tilini oladi, bo'lmasa 'uz'
+  if (data.users && data.users[ctx.from.id]) {
+    return data.users[ctx.from.id].language || 'uz';
+  }
+  
+  return 'uz';
 }
 
 function tr(ctx, key, fallback = key) {
@@ -152,7 +162,7 @@ function statsText() {
   const broadcasts = data.stats.broadcastsSent || 0;
   return { uz: `📊 Bot statistikasi\n\n👤 Barcha foydalanuvchilar: ${users.length}\n📢 Barcha kanallar: ${channels}\n📨 Yuborilgan postlar: ${posts}\n📣 Broadcastlar: ${broadcasts}`, en: `📊 Bot statistics\n\n👤 All users: ${users.length}\n📢 All channels: ${channels}\n📨 Posts sent: ${posts}\n📣 Broadcasts: ${broadcasts}`, ru: `📊 Статистика бота\n\n👤 Все пользователи: ${users.length}\n📢 Все каналы: ${channels}\n📨 Отправлено постов: ${posts}\n📣 Рассылки: ${broadcasts}`, tr: `📊 Bot istatistikası\n\n👤 Tüm kullanıcılar: ${users.length}\n📢 Tüm kanallar: ${channels}\n📨 Gönderilen gönderiler: ${posts}\n📣 Yayınlar: ${broadcasts}`, ar: `📊 إحصائيات البوت\n\n👤 جميع المستخدمين: ${users.length}\n📢 جميع القنوات: ${channels}\n📨 المنشورات المرسلة: ${posts}\n📣 الإرسالات: ${broadcasts}`, zh: `📊 机器人统计\n\n👤 用户总数：${users.length}\n📢 频道总数：${channels}\n📨 已发送帖子：${posts}\n📣 广播：${broadcasts}`, ko: `📊 봇 통계\n\n👤 전체 사용자: ${users.length}\n📢 전체 채널: ${channels}\n📨 보낸 게시물: ${posts}\n📣 방송: ${broadcasts}`, tg: `📊 Омори бот\n\n👤 Ҳамаи корбарон: ${users.length}\n📢 Ҳамаи каналҳо: ${channels}\n📨 Постҳои фиристодашуда: ${posts}\n📣 Ирсолҳо: ${broadcasts}` };
 }
-
+if (!ctx || !ctx.from || !ctx.from.id) return;
 async function requiredSubscription(ctx) {
   const channel = data.settings?.requiredChannel;
   if (!channel || isAdmin(ctx)) return true;
