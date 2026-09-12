@@ -1,8 +1,23 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
+const port = Number(process.env.PORT) || 3000;
+
 app.get('/', (req, res) => res.send('Bot ishlamoqda...'));
-app.listen(process.env.PORT || 3000);
+app.get('/health', (req, res) => res.status(200).json({ ok: true }));
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Express server ${port} portda ishlayapti.`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { Telegraf, Markup, session } = require('telegraf');
@@ -616,9 +631,16 @@ bot.on('text', async (ctx) => {
 
 bot.catch((error, ctx) => {
   console.error(`Update ${ctx.updateType} failed:`, error);
-  ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
+  if (ctx?.reply) {
+    ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
+  }
 });
 
-bot.launch().then(() => console.log('Bot ishga tushdi.'));
+bot.launch()
+  .then(() => console.log('Bot ishga tushdi.'))
+  .catch((error) => {
+    console.error('Bot launch failed:', error);
+  });
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
