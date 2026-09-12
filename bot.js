@@ -29,7 +29,10 @@ if (!token) {
 }
 
 const bot = new Telegraf(token);
-const dataPath = path.join(__dirname, 'data.json');
+const localDataPath = path.join(__dirname, 'data.json');
+const renderDiskDataPath = '/opt/render/project/src/data/data.json';
+const dataPath = fs.existsSync(renderDiskDataPath) ? renderDiskDataPath : localDataPath;
+fs.mkdirSync(path.dirname(dataPath), { recursive: true });
 const data = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { users: {} };
 data.users ||= {};
 data.settings ||= {};
