@@ -280,8 +280,13 @@ async function broadcastPost(ctx, post) {
       let canSend = true;
       for (const required of getRequiredChannels()) {
         if (!required?.id) continue;
-        const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
-        if (!['creator', 'administrator', 'member'].includes(member.status)) {
+        try {
+          const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
+          if (!['creator', 'administrator', 'member'].includes(member.status)) {
+            canSend = false;
+            break;
+          }
+        } catch (error) {
           canSend = false;
           break;
         }
