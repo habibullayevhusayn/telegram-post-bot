@@ -170,9 +170,6 @@ function userData(userId) {
       personalId: nextId,
       username: '',
       nickname: '',
-      referrals: [],
-      referredBy: null,
-      referralRewarded: [],
       postLog: [],
       profileSeen: false
     };
@@ -181,9 +178,7 @@ function userData(userId) {
   data.users[key].channels ||= [];
   data.users[key].language ||= null;
   data.users[key].balance ??= 0;
-  data.users[key].referrals ||= [];
   data.users[key].postLog ||= [];
-  data.users[key].referralRewarded ||= [];
   data.users[key].profileSeen ??= false;
 
   if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
@@ -219,7 +214,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '📣 Referal']];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -522,8 +517,7 @@ function buildUserProfileText(user, fromId) {
     `Nickname: ${user.nickname || '—'}\n` +
     `Bot personal ID: ${user.personalId || '—'}\n` +
     `Telegram ID: ${fromId}\n` +
-    `Balans: ${Number(user.balance || 0)} UZS\n` +
-    `Taklif qilganlar: ${Array.isArray(user.referrals) ? user.referrals.length : 0}`;
+    `Balans: ${Number(user.balance || 0)} UZS`;
 }
 
 async function sendToAdmin(message) {
@@ -554,10 +548,6 @@ async function chargeOrAllowPost(ctx) {
   return { ok: true };
 }
 
-function normalizeReferralPayload(payload) {
-  return String(payload || '').trim();
-}
-
 function findUserByPersonalId(id) {
   const target = String(id).trim();
   for (const [key, account] of Object.entries(data.users || {})) {
@@ -568,26 +558,11 @@ function findUserByPersonalId(id) {
 
 function buildProfileText(ctx) {
   const account = userData(ctx.from.id);
-  const invited = Array.isArray(account.referrals) ? account.referrals.length : 0;
-  const invitedNames = Array.isArray(account.referrals) ? account.referrals.map((id) => String(id)).join(', ') : '—';
   return `👤 Profilim\n\n` +
     `Botdagi ID: ${account.personalId}\n` +
     `Telegram ID: ${ctx.from.id}\n` +
     `Username: ${ctx.from.username || '—'}\n` +
     `Nickname: ${ctx.from.first_name || '—'}\n` +
-    `Balans: ${Number(account.balance || 0)} UZS\n` +
-    `Taklif qilgan dostlar: ${invited}\n` +
-    `Taklif qilgan dostlar botdagi IDlari: ${invitedNames}`;
-}
-
-function buildReferralText(ctx) {
-  const account = userData(ctx.from.id);
-  const key = String(ctx.from.id);
-  const botLink = getBotPublicLink();
-  const inviteLink = `${botLink}?start=${account.personalId}`;
-  return `📣 Referal bo\'limi\n\n` +
-    `Taklif qilish uchun havola:\n${inviteLink}\n\n` +
-    `Taklif qilinganlar: ${Array.isArray(account.referrals) ? account.referrals.length : 0}\n` +
     `Balans: ${Number(account.balance || 0)} UZS`;
 }
 
@@ -598,23 +573,7 @@ async function handleStart(ctx) {
   if (!account.language) {
     account.language = 'uz';
   }
-
-  const payload = normalizeReferralPayload(ctx.startPayload || ctx.message?.text?.replace(/^\/start\s*/i, ''));
-  const isNewUser = Boolean(ctx.session?.justCreated);
-  if (isNewUser && payload && payload.length >= 4 && !account.referredBy && !account.referralRewarded?.includes(payload)) {
-    const found = findUserByPersonalId(payload);
-    if (found && found.key !== String(ctx.from.id)) {
-      account.referredBy = found.key;
-      found.account.referrals ||= [];
-      if (!found.account.referrals.includes(String(account.personalId))) {
-        found.account.referrals.push(String(account.personalId));
-      }
-      found.account.referralRewarded ||= [];
-    }
-  }
-
   saveData();
-  await rewardReferralIfEligible(ctx);
   reset(ctx);
   if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
   return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
@@ -653,27 +612,7 @@ async function chargeForPostIfNeeded(ctx) {
   return { ok: true };
 }
 
-async function rewardReferralIfEligible(ctx) {
-  const account = userData(ctx.from.id);
-  if (!account || !account.referredBy || !account.personalId) return;
-  if (!ctx.session?.justCreated) return;
 
-  const inviter = data.users[String(account.referredBy)];
-  if (!inviter) return;
-
-  inviter.referrals ||= [];
-  inviter.referralRewarded ||= [];
-
-  const invitedId = String(account.personalId);
-  if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.some((item) => String(item) === invitedId)) return;
-
-  inviter.balance = Number(inviter.balance || 0) + 1000;
-  if (!inviter.referrals.includes(invitedId)) {
-    inviter.referrals.push(invitedId);
-  }
-  inviter.referralRewarded.push(invitedId);
-  saveData();
-}
 
 async function checkFullAdmin(ctx, username) {
   const chat = await ctx.telegram.getChat(username);
@@ -750,7 +689,6 @@ bot.command('balance', (ctx) => {
   const account = userData(ctx.from.id);
   return ctx.reply(`Balans: ${Number(account.balance || 0)} UZS`);
 });
-bot.command('referral', (ctx) => ctx.reply(buildReferralText(ctx), mainKeyboard(ctx)));
 
 bot.command('channels', showChannels);
 
@@ -771,10 +709,6 @@ bot.hears(Object.values(text.settings), (ctx) => ctx.reply(tr(ctx, 'welcome'), l
 
 bot.hears('👤 Profilim', (ctx) => {
   return ctx.reply(buildProfileText(ctx), mainKeyboard(ctx));
-});
-
-bot.hears('📣 Referal', (ctx) => {
-  return ctx.reply(buildReferralText(ctx), mainKeyboard(ctx));
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
@@ -1111,9 +1045,7 @@ bot.on('text', async (ctx) => {
       `Nickname: ${account.nickname || '—'}\n` +
       `Bot personal ID: ${account.personalId || '—'}\n` +
       `Telegram ID: ${found.key}\n` +
-      `Balans: ${Number(account.balance || 0)} UZS\n` +
-      `Taklif qilganlar: ${Array.isArray(account.referrals) ? account.referrals.length : 0}\n` +
-      `Taklif qilgan dostlar IDlari: ${Array.isArray(account.referrals) ? account.referrals.join(', ') : '—'}`;
+      `Balans: ${Number(account.balance || 0)} UZS`;
     ctx.session = { step: 'admin_user_search_result', targetKey: found.key, targetPersonalId: account.personalId };
     return ctx.reply(detail, adminBalanceKeyboard(account.personalId));
   }
