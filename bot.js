@@ -261,10 +261,7 @@ function statsText() {
 async function requiredSubscription(ctx) {
   if (isAdmin(ctx)) return true;
   const channels = getRequiredChannels();
-  if (!channels.length) {
-    await rewardReferralIfEligible(ctx);
-    return true;
-  }
+  if (!channels.length) return true;
 
   for (const channel of channels) {
     try {
@@ -280,7 +277,6 @@ async function requiredSubscription(ctx) {
     }
   }
 
-  await rewardReferralIfEligible(ctx);
   return true;
 }
 
@@ -659,7 +655,8 @@ async function chargeForPostIfNeeded(ctx) {
 
 async function rewardReferralIfEligible(ctx) {
   const account = userData(ctx.from.id);
-  if (!account.referredBy || !account.personalId) return;
+  if (!account || !account.referredBy || !account.personalId) return;
+  if (!ctx.session?.justCreated) return;
 
   const inviter = data.users[String(account.referredBy)];
   if (!inviter) return;
@@ -667,36 +664,14 @@ async function rewardReferralIfEligible(ctx) {
   inviter.referrals ||= [];
   inviter.referralRewarded ||= [];
 
-  if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.includes(account.personalId)) return;
-
-  const alreadyStarted = Boolean(data.users?.[String(ctx.from.id)] && data.users[String(ctx.from.id)].profileSeen !== undefined && data.users[String(ctx.from.id)].personalId);
-  if (!ctx.session?.justCreated && !alreadyStarted) return;
-
-  const channels = getRequiredChannels();
-  let eligible = true;
-
-  if (channels.length) {
-    for (const channel of channels) {
-      try {
-        const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
-        if (!['creator', 'administrator', 'member'].includes(member.status)) {
-          eligible = false;
-          break;
-        }
-      } catch (error) {
-        eligible = false;
-        break;
-      }
-    }
-  }
-
-  if (!eligible) return;
+  const invitedId = String(account.personalId);
+  if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.some((item) => String(item) === invitedId)) return;
 
   inviter.balance = Number(inviter.balance || 0) + 1000;
-  if (!inviter.referrals.includes(String(account.personalId))) {
-    inviter.referrals.push(String(account.personalId));
+  if (!inviter.referrals.includes(invitedId)) {
+    inviter.referrals.push(invitedId);
   }
-  inviter.referralRewarded.push(account.personalId);
+  inviter.referralRewarded.push(invitedId);
   saveData();
 }
 
@@ -1149,7 +1124,9 @@ bot.on('text', async (ctx) => {
     if (!Number.isFinite(targetChat)) return ctx.reply('Foydalanuvchi topilmadi.', adminKeyboard(ctx));
 
     try {
-      await bot.telegram.sendMessage(targetChat, trimmedText);
+      await bot.telegram.sendMessage(targetChat, trimmedText, {
+        entities: Array.isArray(ctx.message.entities) ? ctx.message.entities : undefined
+      });
       reset(ctx);
       return ctx.reply('✅ Xabar foydalanuvchiga yuborildi.', adminKeyboard(ctx));
     } catch (error) {
