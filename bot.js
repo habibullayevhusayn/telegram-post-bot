@@ -67,6 +67,8 @@ const data = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf
 data.users ||= {};
 data.settings ||= {};
 data.settings.requiredChannels ||= [];
+data.settings.premiumCardNumber ||= '9860 0803 9258 5933';
+data.settings.premiumPrice ||= 10000;
 if (data.settings.requiredChannel && !Array.isArray(data.settings.requiredChannels)) {
   data.settings.requiredChannels = [data.settings.requiredChannel];
 }
@@ -269,7 +271,8 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
     [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
-    [Markup.button.callback('🔍 Userni qidirish', 'admin:user_search')]
+    [Markup.button.callback('� Premium to\'lov sozlamalari', 'admin:premium_settings')],
+    [Markup.button.callback('�🔍 Userni qidirish', 'admin:user_search')]
   ]);
 }
 
@@ -658,12 +661,14 @@ function buildPremiumText(ctx) {
   const status = Boolean(account.premium)
     ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}`
     : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
+  const cardNumber = String(data.settings?.premiumCardNumber || '9860 0803 9258 5933').trim();
+  const price = Number(data.settings?.premiumPrice || 10000);
   return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>  ${text.premium?.[lang] || 'Premium'}\n\n` +
     `<tg-emoji emoji-id="5370784581341422520">⭐️</tg-emoji> ${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
     `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
     `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}\n\n` +
-    `<tg-emoji emoji-id="5267300544094948794">💳</tg-emoji> To'lov kartasi: 9860 0803 9258 5833\n` +
-    `<tg-emoji emoji-id="5393290141253004429">🏧</tg-emoji> Humo plastik karta, 10 000 so'm\n\n` +
+    `<tg-emoji emoji-id="5267300544094948794">💳</tg-emoji> To'lov kartasi: <code>${cardNumber}</code>\n` +
+    `<tg-emoji emoji-id="5393290141253004429">🏧</tg-emoji> Humo plastik karta, ${price} so'm\n\n` +
     `<tg-emoji emoji-id="5373265917092316632">📱</tg-emoji> To'lovni amalga oshirgandan keyin quyidagi tugmani bosing:`;
 }
 
@@ -817,7 +822,7 @@ bot.action('premium_paid', async (ctx) => {
   await ctx.answerCbQuery();
   const account = userData(ctx.from.id);
   if (account.premium) {
-    return ctx.reply('<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Siz allaqachon premium tarifga egasiz.', mainKeyboard(ctx));
+    return ctx.reply('<tg-emoji emoji-id="5393318303353563978">⚡️</tg-emoji> Siz allaqachon premium tarifga egasiz.', mainKeyboard(ctx));
   }
   ctx.session = { step: 'premium_payment_photo', buyer: ctx.from.id };
   return ctx.reply(`<tg-emoji emoji-id="5422679296789455210">🇺🇿</tg-emoji> To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.`, mainKeyboard(ctx));
@@ -833,7 +838,7 @@ bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
   saveData();
 
   try {
-    await bot.telegram.sendMessage(userId, `<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.`, {
+    await bot.telegram.sendMessage(userId, `<tg-emoji emoji-id="5393318303353563978">⚡️</tg-emoji> Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.`, {
       parse_mode: 'HTML',
       reply_markup: mainKeyboard(ctx).reply_markup
     });
@@ -850,7 +855,7 @@ bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
     console.error('Premium approve admin notification failed:', error?.response?.description || error.message);
   }
 
-  return ctx.reply('<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Premium tarif tasdiqlandi.', adminKeyboard(ctx));
+  return ctx.reply('<tg-emoji emoji-id="5393318303353563978">⚡️</tg-emoji> Premium tarif tasdiqlandi.', adminKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
@@ -915,6 +920,38 @@ bot.action('admin:required_list', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   return ctx.reply(formatRequiredChannelList(), adminKeyboard(ctx));
+});
+
+bot.action('admin:premium_settings', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_premium_settings_menu' };
+  return ctx.reply('💳 Premium to\'lov kartasi va narxini tanlang:', Markup.inlineKeyboard([
+    [Markup.button.callback('🪪 Karta raqamini o\'zgartirish', 'admin:premium_card_edit')],
+    [Markup.button.callback('💵 Premium narxini o\'zgartirish', 'admin:premium_price_edit')],
+    [Markup.button.callback('⬅️ Orqaga', 'admin:back')]
+  ]));
+});
+
+bot.action('admin:premium_card_edit', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_premium_card_edit' };
+  return ctx.reply(`Yangi karta raqamini yuboring (hozirgi: ${String(data.settings?.premiumCardNumber || '9860 0803 9258 5933')})`, adminKeyboard(ctx));
+});
+
+bot.action('admin:premium_price_edit', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_premium_price_edit' };
+  return ctx.reply(`Yangi premium narxini yuboring (hozirgi: ${Number(data.settings?.premiumPrice || 10000)} so'm)`, adminKeyboard(ctx));
+});
+
+bot.action('admin:back', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  reset(ctx);
+  return ctx.reply('🛠 Admin panel', adminKeyboard(ctx));
 });
 
 bot.action('admin:broadcast', async (ctx) => {
@@ -1121,6 +1158,30 @@ bot.on('text', async (ctx) => {
     if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
     sessionState.step = null;
     return sendMediaFromUrl(ctx, trimmedText);
+  }
+
+  if (sessionState.step === 'admin_premium_card_edit') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const cardNumber = trimmedText.replace(/\s+/g, ' ').trim();
+    if (!/^\d{4}(\s\d{4}){3}$/.test(cardNumber)) {
+      return ctx.reply('❌ Karta raqami noto\'g\'ri formatda. Masalan: 9860 0803 9258 5933', adminKeyboard(ctx));
+    }
+    data.settings.premiumCardNumber = cardNumber;
+    saveData();
+    reset(ctx);
+    return ctx.reply(`✅ Premium karta raqami yangilandi: ${cardNumber}`, adminKeyboard(ctx));
+  }
+
+  if (sessionState.step === 'admin_premium_price_edit') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const price = Number(trimmedText.replace(/\D/g, ''));
+    if (!Number.isFinite(price) || price <= 0) {
+      return ctx.reply('❌ Premium narxini faqat musbat son ko\'rinishida kiriting.', adminKeyboard(ctx));
+    }
+    data.settings.premiumPrice = price;
+    saveData();
+    reset(ctx);
+    return ctx.reply(`✅ Premium narxi yangilandi: ${price} so'm`, adminKeyboard(ctx));
   }
 
   if (sessionState.step === 'required_subscription_channel') {
