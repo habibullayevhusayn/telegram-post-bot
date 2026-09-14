@@ -47,6 +47,7 @@ if (data.settings.requiredChannel && Array.isArray(data.settings.requiredChannel
 if (!Array.isArray(data.settings.requiredChannels)) data.settings.requiredChannels = [];
 const ADMIN_USERNAME = 'habibullayev_28';
 const ADMIN_PUBLIC_USERNAME = '@habibullayev_28';
+const ADMIN_TG_ID = 7669387254;
 const languages = {
   uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
   tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
@@ -227,7 +228,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim']];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -631,7 +632,16 @@ function buildPremiumText(ctx) {
   return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>  ${text.premium?.[lang] || 'Premium'}\n\n` +
     `${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
     `${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
-    `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}`;
+    `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}\n\n` +
+    `To'lov kartasi: 9860 0803 9258 5833\n` +
+    `Humo plastik karta, 10 000 so'm\n\n` +
+    `To'lovni amalga oshirgandan keyin quyidagi tugmani bosing:`;
+}
+
+function premiumInlineKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("To'lov qildim", 'premium_paid')]
+  ]);
 }
 
 async function checkFullAdmin(ctx, username) {
@@ -715,7 +725,7 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
-bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx) }));
+bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard(ctx) }));
 
 bot.command('channels', showChannels);
 
@@ -736,6 +746,10 @@ bot.hears(Object.values(text.settings), (ctx) => ctx.reply(tr(ctx, 'welcome'), l
 
 bot.hears('👤 Profilim', (ctx) => {
   return ctx.reply(buildProfileText(ctx), mainKeyboard(ctx));
+});
+
+bot.hears('💎 Premium', (ctx) => {
+  return ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard() });
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
@@ -767,6 +781,36 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
 
   ctx.session = { step: 'admin_user_message', targetKey: found.key, targetPersonalId: targetId };
   return ctx.reply('Foydalanuvchiga yuboriladigan xabarni yozing:', adminKeyboard(ctx));
+});
+
+bot.action('premium_paid', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.session = { step: 'premium_payment_photo', buyer: ctx.from.id };
+  return ctx.reply('To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.', mainKeyboard(ctx));
+});
+
+bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  const userId = Number(ctx.match[1]);
+  const account = userData(userId);
+  account.premium = true;
+  saveData();
+  await bot.telegram.sendMessage(userId, '✅ Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.', mainKeyboard(userData(userId)));
+  await bot.telegram.sendMessage(ADMIN_TG_ID, `✅ Premium so\'rovi tasdiqlandi. Foydalanuvchi ID: ${userId}`, adminKeyboard(ctx));
+  return ctx.reply('✅ Foydalanuvchiga premium berildi.', adminKeyboard(ctx));
+});
+
+bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  const userId = Number(ctx.match[1]);
+  const account = userData(userId);
+  account.premium = false;
+  saveData();
+  await bot.telegram.sendMessage(userId, '❌ Premium so\'rovi rad etildi. Tekshiruvda muammo mavjud.', mainKeyboard(userData(userId)));
+  await bot.telegram.sendMessage(ADMIN_TG_ID, `❌ Premium so\'rovi rad etildi. Foydalanuvchi ID: ${userId}`, adminKeyboard(ctx));
+  return ctx.reply('❌ Premium so\'rovi rad etildi.', adminKeyboard(ctx));
 });
 
 bot.action('admin:stats', async (ctx) => {
@@ -862,6 +906,26 @@ bot.action(/^compose:(-?\d+)$/, async (ctx) => {
 });
 
 bot.on('photo', async (ctx) => {
+  if (ctx.session?.step === 'premium_payment_photo') {
+    const photoFileId = ctx.message.photo.at(-1).file_id;
+    const requester = ctx.from;
+    const user = userData(requester.id);
+    const cardText = `💎 Premium so'rovi\n\n` +
+      `Foydalanuvchi: ${requester.username || requester.first_name || requester.id}\n` +
+      `Telegram ID: ${requester.id}\n` +
+      `Bot personal ID: ${user.personalId || '—'}\n\n` +
+      `To'lov cheki rasm yuborildi.`;
+    await bot.telegram.sendPhoto(ADMIN_TG_ID, photoFileId, {
+      caption: cardText,
+      reply_markup: Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Premium berish', `admin:premium_approve:${requester.id}`)],
+        [Markup.button.callback('❌ Premium bermaslik', `admin:premium_reject:${requester.id}`)]
+      ]).reply_markup
+    });
+    reset(ctx);
+    return ctx.reply('✅ To\'lov chekingiz adminga yuborildi. Tasdiq kutilmoqda.', mainKeyboard(ctx));
+  }
+
   if (!ctx.session || !['photo', 'broadcast_photo'].includes(ctx.session.step)) return;
   const message = ctx.message;
   ctx.session.post.photo = message.photo.at(-1).file_id;
