@@ -29,6 +29,36 @@ if (!token) {
 }
 
 const bot = new Telegraf(token);
+const PREMIUM_EMOJI_TAG = '<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>';
+
+function prefixPremiumEmojiIfMissing(text) {
+  if (typeof text !== 'string') return text;
+  if (/<tg-emoji\s+emoji-id=\"[^"]+\">[\s\S]*?<\/tg-emoji>/.test(text)) return text;
+  return `${PREMIUM_EMOJI_TAG} ${text}`;
+}
+
+const originalSendMessage = bot.telegram.sendMessage.bind(bot.telegram);
+bot.telegram.sendMessage = async (chatId, text, extra = {}) => {
+  const enrichedText = prefixPremiumEmojiIfMissing(text);
+  const enrichedExtra = { ...extra };
+  if (enrichedExtra.parse_mode === undefined && enrichedText.includes('<tg-emoji')) {
+    enrichedExtra.parse_mode = 'HTML';
+  }
+  return originalSendMessage(chatId, enrichedText, enrichedExtra);
+};
+
+const originalSendPhoto = bot.telegram.sendPhoto.bind(bot.telegram);
+bot.telegram.sendPhoto = async (chatId, photo, extra = {}) => {
+  const enrichedExtra = { ...extra };
+  if (typeof enrichedExtra.caption === 'string') {
+    enrichedExtra.caption = prefixPremiumEmojiIfMissing(enrichedExtra.caption);
+  }
+  if (enrichedExtra.parse_mode === undefined && typeof enrichedExtra.caption === 'string' && enrichedExtra.caption.includes('<tg-emoji')) {
+    enrichedExtra.parse_mode = 'HTML';
+  }
+  return originalSendPhoto(chatId, photo, enrichedExtra);
+};
+
 const localDataPath = path.join(__dirname, 'data.json');
 const renderDiskDataPath = '/opt/render/project/src/data/data.json';
 const dataPath = fs.existsSync(renderDiskDataPath) ? renderDiskDataPath : localDataPath;
@@ -691,14 +721,15 @@ bot.use(async (ctx, next) => {
   const originalReply = ctx.reply.bind(ctx);
   ctx.reply = (message, ...args) => {
     const localized = localizeReply(ctx, message);
-    if (localized.includes('<tg-emoji')) {
-      if (args.length === 0) return originalReply(localized, { parse_mode: 'HTML' });
+    const enriched = prefixPremiumEmojiIfMissing(localized);
+    if (enriched.includes('<tg-emoji')) {
+      if (args.length === 0) return originalReply(enriched, { parse_mode: 'HTML' });
       const firstArg = args[0];
       if (firstArg && typeof firstArg === 'object' && !Array.isArray(firstArg)) {
-        return originalReply(localized, { ...firstArg, parse_mode: 'HTML' });
+        return originalReply(enriched, { ...firstArg, parse_mode: 'HTML' });
       }
     }
-    return originalReply(localized, ...args);
+    return originalReply(enriched, ...args);
   };
   const callbackData = ctx.callbackQuery?.data;
   const isStart = ctx.message?.text === '/start';
