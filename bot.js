@@ -49,8 +49,7 @@ const ADMIN_USERNAME = 'habibullayev_28';
 const ADMIN_PUBLIC_USERNAME = '@habibullayev_28';
 const ADMIN_TG_ID = 7669387254;
 const languages = {
-  uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
-  tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
+  uz: 'O\'zbekcha', en: 'English', ru: 'Русский'
 };
 const text = {
   welcome: { uz: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Tilni tanlang:', en: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Choose your language:', ru: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Выберите язык:', ar: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> اختر لغتك:', tr: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Dilinizi seçin:', zh: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> 请选择语言：', ko: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> 언어를 선택하세요:', tg: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Забонро интихоб кунед:' },
@@ -630,17 +629,17 @@ function buildPremiumText(ctx) {
     ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}`
     : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
   return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>  ${text.premium?.[lang] || 'Premium'}\n\n` +
-    `${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
-    `${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
-    `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}\n\n` +
-    `To'lov kartasi: 9860 0803 9258 5833\n` +
-    `Humo plastik karta, 10 000 so'm\n\n` +
-    `To'lovni amalga oshirgandan keyin quyidagi tugmani bosing:`;
+    `<tg-emoji emoji-id="5370784581341422520">⭐️</tg-emoji> ${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
+    `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
+    `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}\n\n` +
+    `<tg-emoji emoji-id="5267300544094948794">💳</tg-emoji> To'lov kartasi: 9860 0803 9258 5833\n` +
+    `<tg-emoji emoji-id="5393290141253004429">🏧</tg-emoji> Humo plastik karta, 10 000 so'm\n\n` +
+    `<tg-emoji emoji-id="5373265917092316632">📱</tg-emoji> To'lovni amalga oshirgandan keyin quyidagi tugmani bosing:`;
 }
 
 function premiumInlineKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback("To'lov qildim", 'premium_paid')]
+    [Markup.button.callback("To'lov qildim ✅", 'premium_paid')]
   ]);
 }
 
@@ -785,8 +784,12 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
 
 bot.action('premium_paid', async (ctx) => {
   await ctx.answerCbQuery();
+  const account = userData(ctx.from.id);
+  if (account.premium) {
+    return ctx.reply('<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Siz allaqachon premium tarifga egasiz.', mainKeyboard(ctx));
+  }
   ctx.session = { step: 'premium_payment_photo', buyer: ctx.from.id };
-  return ctx.reply('To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.', mainKeyboard(ctx));
+  return ctx.reply(`<tg-emoji emoji-id="5422679296789455210">🇺🇿</tg-emoji> To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.`, mainKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
@@ -799,7 +802,8 @@ bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
   saveData();
 
   try {
-    await bot.telegram.sendMessage(userId, '✅ Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.', {
+    await bot.telegram.sendMessage(userId, `<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.`, {
+      parse_mode: 'HTML',
       reply_markup: mainKeyboard(ctx).reply_markup
     });
   } catch (error) {
@@ -807,14 +811,15 @@ bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
   }
 
   try {
-    await bot.telegram.sendMessage(ADMIN_TG_ID, `✅ Premium so\'rovi tasdiqlandi. Foydalanuvchi ID: ${userId}`, {
+    await bot.telegram.sendMessage(ADMIN_TG_ID, `<tg-emoji emoji-id="5415726114104418638">🔵</tg-emoji> Premium so\'rovi tasdiqlandi. Foydalanuvchi ID: ${userId}`, {
+      parse_mode: 'HTML',
       reply_markup: adminKeyboard(ctx).reply_markup
     });
   } catch (error) {
     console.error('Premium approve admin notification failed:', error?.response?.description || error.message);
   }
 
-  return ctx.reply('✅ Foydalanuvchiga premium berildi.', adminKeyboard(ctx));
+  return ctx.reply('<tg-emoji emoji-id="5350313358459412048">⭐️</tg-emoji> Premium tarif tasdiqlandi.', adminKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
@@ -827,7 +832,8 @@ bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
   saveData();
 
   try {
-    await bot.telegram.sendMessage(userId, '❌ Premium so\'rovi rad etildi. Tekshiruvda muammo mavjud.', {
+    await bot.telegram.sendMessage(userId, `<tg-emoji emoji-id="5415726114104418638">🔵</tg-emoji> Premium so\'rovi rad etildi. Tekshiruvda muammo mavjud.`, {
+      parse_mode: 'HTML',
       reply_markup: mainKeyboard(ctx).reply_markup
     });
   } catch (error) {
@@ -835,14 +841,15 @@ bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
   }
 
   try {
-    await bot.telegram.sendMessage(ADMIN_TG_ID, `❌ Premium so\'rovi rad etildi. Foydalanuvchi ID: ${userId}`, {
+    await bot.telegram.sendMessage(ADMIN_TG_ID, `<tg-emoji emoji-id="5415726114104418638">🔵</tg-emoji> Premium so\'rovi rad etildi. Foydalanuvchi ID: ${userId}`, {
+      parse_mode: 'HTML',
       reply_markup: adminKeyboard(ctx).reply_markup
     });
   } catch (error) {
     console.error('Premium reject admin notification failed:', error?.response?.description || error.message);
   }
 
-  return ctx.reply('❌ Premium so\'rovi rad etildi.', adminKeyboard(ctx));
+  return ctx.reply('<tg-emoji emoji-id="5415726114104418638">🔵</tg-emoji> Premium so\'rovi rad etildi.', adminKeyboard(ctx));
 });
 
 bot.action('admin:stats', async (ctx) => {
@@ -942,20 +949,21 @@ bot.on('photo', async (ctx) => {
     const photoFileId = ctx.message.photo.at(-1).file_id;
     const requester = ctx.from;
     const user = userData(requester.id);
-    const cardText = `💎 Premium so'rovi\n\n` +
+    const cardText = `<tg-emoji emoji-id="5415726114104418638">🔵</tg-emoji> Premium so'rovi\n\n` +
       `Foydalanuvchi: ${requester.username || requester.first_name || requester.id}\n` +
       `Telegram ID: ${requester.id}\n` +
       `Bot personal ID: ${user.personalId || '—'}\n\n` +
       `To'lov cheki rasm yuborildi.`;
     await bot.telegram.sendPhoto(ADMIN_TG_ID, photoFileId, {
       caption: cardText,
+      parse_mode: 'HTML',
       reply_markup: Markup.inlineKeyboard([
         [Markup.button.callback('✅ Premium berish', `admin:premium_approve:${requester.id}`)],
         [Markup.button.callback('❌ Premium bermaslik', `admin:premium_reject:${requester.id}`)]
       ]).reply_markup
     });
     reset(ctx);
-    return ctx.reply('✅ To\'lov chekingiz adminga yuborildi. Tasdiq kutilmoqda.', mainKeyboard(ctx));
+    return ctx.reply(`<tg-emoji emoji-id="5321210956414459578">✔️</tg-emoji> To\'lov chekingiz adminga yuborildi. Tasdiq kutilmoqda.`, mainKeyboard(ctx));
   }
 
   if (!ctx.session || !['photo', 'broadcast_photo'].includes(ctx.session.step)) return;
@@ -1154,7 +1162,8 @@ bot.on('text', async (ctx) => {
       `Username: ${account.username || '—'}\n` +
       `Nickname: ${account.nickname || '—'}\n` +
       `Bot personal ID: ${account.personalId || '—'}\n` +
-      `Telegram ID: ${found.key}`;
+      `Telegram ID: ${found.key}\n` +
+      `Premium status: ${account.premium ? 'Premium mavjud' : 'Premium yo\'q'}`;
     ctx.session = { step: 'admin_user_search_result', targetKey: found.key, targetPersonalId: account.personalId };
     return ctx.reply(detail, adminUserSearchResultKeyboard(account.personalId));
   }
