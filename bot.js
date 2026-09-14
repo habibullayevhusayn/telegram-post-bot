@@ -52,17 +52,17 @@ const languages = {
   tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
 };
 const text = {
-  welcome: { uz: 'Tilni tanlang:', en: 'Choose your language:', ru: 'Выберите язык:', ar: 'اختر لغتك:', tr: 'Dilinizi seçin:', zh: '请选择语言：', ko: '언어를 선택하세요:', tg: 'Забонро интихоб кунед:' },
+  welcome: { uz: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Tilni tanlang:', en: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Choose your language:', ru: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Выберите язык:', ar: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> اختر لغتك:', tr: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Dilinizi seçin:', zh: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> 请选择语言：', ko: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> 언어를 선택하세요:', tg: '<tg-emoji emoji-id="5463392464314315076">👉</tg-emoji> Забонро интихоб кунед:' },
   channels: { uz: '📢 Kanallar ro\'yxati', en: '📢 Channel list', ru: '📢 Список каналов', ar: '📢 قائمة القنوات', tr: '📢 Kanal listesi', zh: '📢 频道列表', ko: '📢 채널 목록', tg: '📢 Рӯйхати каналҳо' },
   addChannel: { uz: '➕ Kanal qo\'shish', en: '➕ Add channel', ru: '➕ Добавить канал', ar: '➕ إضافة قناة', tr: '➕ Kanal ekle', zh: '➕ 添加频道', ko: '➕ 채널 추가', tg: '➕ Иловаи kanal' },
-  settings: { uz: '⚙️ Sozlamalar', en: '⚙️ Settings', ru: '⚙️ Настройки', ar: '⚙️ الإعدادات', tr: '⚙️ Ayarlar', zh: '⚙️ 设置', ko: '⚙️ 설정', tg: '⚙️ Танзимот' },
+  settings: { uz: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> Sozlamalar', en: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> Settings', ru: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> Настройки', ar: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> الإعدادات', tr: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> Ayarlar', zh: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> 设置', ko: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> 설정', tg: '<tg-emoji emoji-id="5341715473882955310">⚙️</tg-emoji> Танзимот' },
   admin: { uz: '🛠 Admin panel', en: '🛠 Admin panel', ru: '🛠 Панель администратора', ar: '🛠 لوحة المشرف', tr: '🛠 Yönetici paneli', zh: '🛠 管理员面板', ko: '🛠 관리자 패널', tg: '🛠 Панели админ' },
   languageSaved: { uz: '✅ Til saqlandi.', en: '✅ Language saved.', ru: '✅ Язык сохранён.', ar: '✅ تم حفظ اللغة.', tr: '✅ Dil kaydedildi.', zh: '✅ 语言已保存。', ko: '✅ 언어가 저장되었습니다.', tg: '✅ Забон нигоҳ дошта шуд.' },
   createPost: { uz: '📨 Post yuborish', en: '📨 Create Post', ru: '📨 Создать пост', ar: '📨 إنشاء منشور', tr: '📨 Gönderi oluştur', zh: '📨 创建帖子', ko: '📨 게시물 만들기', tg: '📨 Эҷоди пост' },
   videoSave: { uz: '🎬 Video saqlash', en: '🎬 Save video', ru: '🎬 Сохранить видео', ar: '🎬 حفظ فيديو', tr: '🎬 Video kaydet', zh: '🎬 保存视频', ko: '🎬 영상 저장', tg: '🎬 Сабти видео' },
-  profile: { uz: 'Profilim', en: 'My Profile', ru: 'Мой профиль', ar: 'صفحتي', tr: 'Profilim', zh: '我的资料', ko: '내 프로필', tg: 'Профили ман' },
+  profile: { uz: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> Profilim', en: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> My Profile', ru: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> Мой профиль', ar: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> صفحتي', tr: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> Profilim', zh: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> 我的资料', ko: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> 내 프로필', tg: '<tg-emoji emoji-id="5461117441612462242">🙂</tg-emoji> Профили ман' },
   botId: { uz: 'Botdagi ID', en: 'Bot ID', ru: 'ID бота', ar: 'معرف البوت', tr: 'Bot ID', zh: '机器人 ID', ko: '봇 ID', tg: 'ID-и бот' },
-  telegramId: { uz: 'Telegram ID', en: 'Telegram ID', ru: 'Telegram ID', ar: 'معرف تلغرام', tr: 'Telegram ID', zh: 'Telegram ID', ko: '텔레그램 ID', tg: 'ID-и Телеграм' },
+  telegramId: { uz: 'Telegram ID', en: 'Telegram ID', ru: 'Telegram ID', ar: 'معرف تلغрам', tr: 'Telegram ID', zh: 'Telegram ID', ko: '텔레그램 ID', tg: 'ID-и Телеграм' },
   username: { uz: 'Username', en: 'Username', ru: 'Username', ar: 'اسم المستخدم', tr: 'Kullanıcı adı', zh: '用户名', ko: '사용자 이름', tg: 'Номи корбар' },
   nickname: { uz: 'Nickname', en: 'Nickname', ru: 'Nickname', ar: 'اسم المستعار', tr: 'Takma ad', zh: '昵称', ko: '닉네임', tg: 'Никнейм' },
   balance: { uz: 'Balans', en: 'Balance', ru: 'Баланс', ar: 'الرصيد', tr: 'Bakiye', zh: '余额', ko: '잔액', tg: 'Баланс' }
@@ -152,7 +152,14 @@ for (const [language, labels] of Object.entries(previewLabels)) {
   keyboardTranslations[language]['✅ Tasdiqlash'] = labels[1];
 }
 function localizeReply(ctx, message) {
-  return replyTranslations[userLanguage(ctx)]?.[message] || keyboardTranslations[userLanguage(ctx)]?.[message] || message;
+  const lang = userLanguage(ctx);
+  const translated = replyTranslations[lang]?.[message] || keyboardTranslations[lang]?.[message] || message;
+  const prefixMap = {
+    'Kanalni tanlang:': '<tg-emoji emoji-id="5424818078833715060">📣</tg-emoji>',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': '<tg-emoji emoji-id="5397916757333654639">➕</tg-emoji>'
+  };
+  const prefix = prefixMap[message] || prefixMap[translated];
+  return prefix ? `${prefix} ${translated}` : translated;
 }
 data.settings ||= {};
 data.stats ||= { postsSent: 0, broadcastsSent: 0 };
@@ -618,7 +625,7 @@ function buildPremiumText(ctx) {
   const status = Boolean(account.premium)
     ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}`
     : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
-  return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> 💎 ${text.premium?.[lang] || 'Premium'}\n\n` +
+  return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>  ${text.premium?.[lang] || 'Premium'}\n\n` +
     `${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
     `${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
     `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}`;
@@ -670,7 +677,17 @@ bot.use(async (ctx, next) => {
   }
 
   const originalReply = ctx.reply.bind(ctx);
-  ctx.reply = (message, ...args) => originalReply(localizeReply(ctx, message), ...args);
+  ctx.reply = (message, ...args) => {
+    const localized = localizeReply(ctx, message);
+    if (localized.includes('<tg-emoji')) {
+      if (args.length === 0) return originalReply(localized, { parse_mode: 'HTML' });
+      const firstArg = args[0];
+      if (firstArg && typeof firstArg === 'object' && !Array.isArray(firstArg)) {
+        return originalReply(localized, { ...firstArg, parse_mode: 'HTML' });
+      }
+    }
+    return originalReply(localized, ...args);
+  };
   const callbackData = ctx.callbackQuery?.data;
   const isStart = ctx.message?.text === '/start';
   const isSettings = ctx.message?.text === '/settings';
