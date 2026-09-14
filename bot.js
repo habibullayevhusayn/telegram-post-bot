@@ -574,7 +574,7 @@ async function handleStart(ctx) {
 
   const payload = normalizeReferralPayload(ctx.startPayload || ctx.message?.text?.replace(/^\/start\s*/i, ''));
   const isNewUser = Boolean(ctx.session?.justCreated);
-  if (isNewUser && payload && payload.length >= 4 && !account.referredBy) {
+  if (isNewUser && payload && payload.length >= 4 && !account.referredBy && !account.referralRewarded?.includes(payload)) {
     const found = findUserByPersonalId(payload);
     if (found && found.key !== String(ctx.from.id)) {
       account.referredBy = found.key;
@@ -637,6 +637,9 @@ async function rewardReferralIfEligible(ctx) {
   inviter.referralRewarded ||= [];
 
   if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.includes(account.personalId)) return;
+
+  const alreadyStarted = Boolean(data.users?.[String(ctx.from.id)] && data.users[String(ctx.from.id)].profileSeen !== undefined && data.users[String(ctx.from.id)].personalId);
+  if (!ctx.session?.justCreated && !alreadyStarted) return;
 
   const channels = getRequiredChannels();
   let eligible = true;
