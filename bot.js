@@ -564,6 +564,35 @@ function buildReferralText(ctx) {
     `Balans: ${Number(account.balance || 0)} UZS`;
 }
 
+async function handleStart(ctx) {
+  const account = userData(ctx.from.id);
+  account.username = ctx.from.username || '';
+  account.nickname = ctx.from.first_name || ctx.from.last_name || '';
+  if (!account.language) {
+    account.language = 'uz';
+  }
+
+  const payload = normalizeReferralPayload(ctx.startPayload || ctx.message?.text?.replace(/^\/start\s*/i, ''));
+  const isNewUser = Boolean(ctx.session?.justCreated);
+  if (isNewUser && payload && payload.length >= 4 && !account.referredBy) {
+    const found = findUserByPersonalId(payload);
+    if (found && found.key !== String(ctx.from.id)) {
+      account.referredBy = found.key;
+      found.account.referrals ||= [];
+      if (!found.account.referrals.includes(String(account.personalId))) {
+        found.account.referrals.push(String(account.personalId));
+      }
+      found.account.referralRewarded ||= [];
+    }
+  }
+
+  saveData();
+  await rewardReferralIfEligible(ctx);
+  reset(ctx);
+  if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
+  return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
+}
+
 async function sendAdminMessage(ctx, messageText) {
   try {
     const chat = await bot.telegram.getChat(ADMIN_PUBLIC_USERNAME);
@@ -674,8 +703,12 @@ bot.use(session());
 
 bot.use(async (ctx, next) => {
   if (ctx.from) {
+    const wasExisting = Boolean(data.users?.[String(ctx.from.id)]);
     userData(ctx.from.id);
     saveData();
+    if (!wasExisting && ctx.session) {
+      ctx.session.justCreated = true;
+    }
   }
 
   const originalReply = ctx.reply.bind(ctx);
@@ -691,31 +724,7 @@ bot.use(async (ctx, next) => {
 });
 
 bot.start(async (ctx) => {
-  const account = userData(ctx.from.id);
-  account.username = ctx.from.username || '';
-  account.nickname = ctx.from.first_name || ctx.from.last_name || '';
-  if (!account.language) {
-    account.language = 'uz';
-  }
-
-  const payload = normalizeReferralPayload(ctx.startPayload || ctx.message?.text?.replace(/^\/start\s*/i, ''));
-  if (payload && payload.length >= 4 && !account.referredBy) {
-    const found = findUserByPersonalId(payload);
-    if (found && found.key !== String(ctx.from.id)) {
-      account.referredBy = found.key;
-      found.account.referrals ||= [];
-      if (!found.account.referrals.includes(String(account.personalId))) {
-        found.account.referrals.push(String(account.personalId));
-      }
-      found.account.referralRewarded ||= [];
-    }
-  }
-
-  saveData();
-  await rewardReferralIfEligible(ctx);
-  reset(ctx);
-  if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
-  return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
+  return handleStart(ctx);
 });
 
 bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
@@ -727,6 +736,12 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 });
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
+bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
+bot.command('balance', (ctx) => {
+  const account = userData(ctx.from.id);
+  return ctx.reply(`Balans: ${Number(account.balance || 0)} UZS`);
+});
+bot.command('referral', (ctx) => ctx.reply(buildReferralText(ctx), mainKeyboard(ctx)));
 
 bot.command('channels', showChannels);
 
@@ -762,7 +777,7 @@ bot.action('check_subscription', async (ctx) => {
   await ctx.answerCbQuery();
   if (await requiredSubscription(ctx)) {
     await rewardReferralIfEligible(ctx);
-    return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
+    return handleStart(ctx);
   }
   return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
 });
@@ -872,7 +887,10 @@ bot.action(/^compose:(-?\d+)$/, async (ctx) => {
   const channel = userData(ctx.from.id).channels.find((item) => String(item.id) === ctx.match[1]);
   if (!channel) return ctx.reply('Kanal topilmadi.');
   ctx.session = { step: 'photo', selectedChannel: channel, post: { buttons: [] } };
-  return ctx.reply('Post uchun rasm yuboring.');
+  return ctx.reply('Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
+    [Markup.button.callback('Rasmsiz', 'no_photo')],
+    [Markup.button.callback('Bekor qilish', 'cancel')]
+  ]));
 });
 
 bot.on('photo', async (ctx) => {
@@ -898,6 +916,15 @@ bot.on('photo', async (ctx) => {
     return ctx.reply('Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:', composerKeyboard(ctx));
   }
 
+  ctx.session.step = 'caption';
+  return ctx.reply('Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.', Markup.inlineKeyboard([
+    [Markup.button.callback('Izohsiz', 'no_caption')],
+    [Markup.button.callback('Bekor qilish', 'cancel')]
+  ]));
+});
+
+bot.action('no_photo', async (ctx) => {
+  await ctx.answerCbQuery();
   ctx.session.step = 'caption';
   return ctx.reply('Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.', Markup.inlineKeyboard([
     [Markup.button.callback('Izohsiz', 'no_caption')],
@@ -952,7 +979,7 @@ bot.action('publish', async (ctx) => {
     reset(ctx);
     return ctx.reply(`✅ Broadcast ${sent} ta chatga yuborildi.`, mainKeyboard(ctx));
   }
-  if (!selectedChannel || !post || !post.photo) return ctx.reply('Post ma\'lumotlari topilmadi.');
+  if (!selectedChannel || !post || (!post.photo && !post.caption)) return ctx.reply('Post ma\'lumotlari topilmadi.');
 
   const charge = await chargeForPostIfNeeded(ctx);
   if (!charge.ok) {
@@ -962,11 +989,18 @@ bot.action('publish', async (ctx) => {
 
   const buttons = ctx.session.previewButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
-  await ctx.telegram.sendPhoto(selectedChannel.id, post.photo, {
-    caption: post.caption || undefined,
-    caption_entities: post.caption ? post.captionEntities : undefined,
-    reply_markup: replyMarkup
-  });
+  if (post.photo) {
+    await ctx.telegram.sendPhoto(selectedChannel.id, post.photo, {
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined,
+      reply_markup: replyMarkup
+    });
+  } else {
+    await ctx.telegram.sendMessage(selectedChannel.id, post.caption || ' ', {
+      entities: post.captionEntities || undefined,
+      reply_markup: replyMarkup
+    });
+  }
   data.stats.postsSent += 1;
   saveData();
   reset(ctx);
