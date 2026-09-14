@@ -83,7 +83,10 @@ const replyTranslations = {
     'Rangli tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?': 'Colored button added. Add another button or publish the post?',
     'Majburiy obuna kanalining public username sini yuboring, masalan: @my_channel': 'Send the required subscription channel username, for example: @my_channel',
     'Broadcast uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Send a broadcast photo or press “Without photo”.',
-    'Tugma havolasini yuboring (https://...):': 'Send the button URL (https://...):', 'Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:': 'Photo and caption saved. You can add URL buttons:'
+    'Tugma havolasini yuboring (https://...):': 'Send the button URL (https://...):', 'Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:': 'Photo and caption saved. You can add URL buttons:',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Send a photo for the post or press “Without photo”.',
+    'Yangi miqdorni kiriting (qoshish uchun).': 'Enter the new amount (for adding).',
+    'Yangi miqdorni kiriting (ayirish uchun).': 'Enter the new amount (for subtracting).'
   },
   ru: {
     'Ruxsat yo\'q.': 'Нет доступа.', 'Kanal topilmadi.': 'Канал не найден.', 'Post uchun rasm yuboring.': 'Отправьте фото для поста.',
@@ -93,15 +96,33 @@ const replyTranslations = {
     'Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:': 'Ссылка должна начинаться с http:// или https://. Отправьте ещё раз:', 'Kerakli amalni pastki menyudan tanlang.': 'Выберите действие в меню.',
     'Broadcast boshlanmagan.': 'Рассылка не начата.', 'Broadcast izohini yuboring:': 'Отправьте подпись рассылки:', 'Rasm saqlandi. Broadcast izohini yuboring:': 'Фото сохранено. Отправьте подпись рассылки:',
     'Post ma\'lumotlari topilmadi.': 'Данные поста не найдены.', 'Broadcast mazmuni topilmadi.': 'Содержимое рассылки не найдено.', 'Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.': 'Произошла техническая ошибка. Попробуйте позже.',
-    'Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.': 'Добро пожаловать в бот управления постами каналов.', 'Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:': 'Фото и подпись сохранены. Можно добавить URL-кнопки:', 'Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.': 'Отправьте подпись поста или нажмите «Без подписи».', 'Avval post yaratishni boshlang.': 'Сначала начните создание поста.', 'Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.': 'Данные кнопки не найдены. Начните заново.', 'Rangli tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?': 'Цветная кнопка добавлена. Добавить ещё или отправить пост?', 'Majburiy obuna kanalining public username sini yuboring, masalan: @my_channel': 'Отправьте username канала обязательной подписки, например: @my_channel', 'Broadcast uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Отправьте фото рассылки или нажмите «Без фото».', 'Tugma havolasini yuboring (https://...):': 'Отправьте URL кнопки (https://...):'
+    'Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.': 'Добро пожаловать в бот управления постами каналов.', 'Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:': 'Фото и подпись сохранены. Можно добавить URL-кнопки:', 'Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.': 'Отправьте подпись поста или нажмите «Без подписи».', 'Avval post yaratishni boshlang.': 'Сначала начните создание поста.', 'Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.': 'Данные кнопки не найдены. Начните заново.', 'Rangli tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?': 'Цветная кнопка добавлена. Добавить ещё или отправить пост?', 'Majburiy obuna kanalining public username sini yuboring, masalan: @my_channel': 'Отправьте username канала обязательной подписки, например: @my_channel', 'Broadcast uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Отправьте фото рассылки или нажмите «Без фото».', 'Tugma havolasini yuboring (https://...):': 'Отправьте URL кнопки (https://...):',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Отправьте фото для поста или нажмите «Без фото».',
+    'Yangi miqdorni kiriting (qoshish uchun).': 'Введите новую сумму (для пополнения).',
+    'Yangi miqdorni kiriting (ayirish uchun).': 'Введите новую сумму (для списания).'
   },
   tr: {
-    'Ruxsat yo\'q.': 'Erişim yok.', 'Kanal topilmadi.': 'Kanal bulunamadı.', 'Post uchun rasm yuboring.': 'Gönderi için fotoğraf gönderin.', 'Tugma matnini yuboring:': 'Buton metnini gönderin:', 'Tugma rangini tanlang:': 'Buton rengini seçin:', 'Amal bekor qilindi.': 'İşlem iptal edildi.', 'Kanalni tanlang:': 'Bir kanal seçin:', 'Kerakli amalni pastki menyudan tanlang.': 'Menüden bir işlem seçin:', 'Broadcast izohini yuboring:': 'Yayın açıklamasını gönderin:', 'Post ma\'lumotlari topilmadi.': 'Gönderi bilgileri bulunamadı.'
+    'Ruxsat yo\'q.': 'Erişim yok.', 'Kanal topilmadi.': 'Kanal bulunamadı.', 'Post için rasm yuboring.': 'Gönderi için fotoğraf gönderin.', 'Tugma matnini yuboring:': 'Buton metnini gönderin:', 'Tugma rangini tanlang:': 'Buton rengini seçin:', 'Amal bekor qilindi.': 'İşlem iptal edildi.', 'Kanalni tanlang:': 'Bir kanal seçin:', 'Kerakli amalni pastki menyudan tanlang.': 'Menüden bir işlem seçin:', 'Broadcast izohini yuboring:': 'Yayın açıklamasını gönderin:', 'Post ma\'lumotlari topilmadi.': 'Gönderi bilgileri bulunamadı.',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Gönderi için fotoğraf gönderin veya «Resimsiz» butonuna basın.',
+    'Yangi miqdorni kiriting (qoshish uchun).': 'Yeni tutarı girin (ekleme için).',
+    'Yangi miqdorni kiriting (ayirish uchun).': 'Yeni tutarı girin (çıkarma için).'
   },
-  ar: { 'Ruxsat yo\'q.': 'لا يوجد صلاحية.', 'Kanal topilmadi.': 'لم يتم العثور على القناة.', 'Post uchun rasm yuboring.': 'أرسل صورة للمنشور.', 'Amal bekor qilindi.': 'تم إلغاء العملية.', 'Kanalni tanlang:': 'اختر قناة:', 'Tugma matnini yuboring:': 'أرسل نص الزر:', 'Tugma rangini tanlang:': 'اختر لون الزر:' },
-  zh: { 'Ruxsat yo\'q.': '无权限。', 'Kanal topilmadi.': '未找到频道。', 'Post uchun rasm yuboring.': '请发送帖子图片。', 'Amal bekor qilindi.': '操作已取消。', 'Kanalni tanlang:': '请选择频道：', 'Tugma matnini yuboring:': '请发送按钮文字：', 'Tugma rangini tanlang:': '请选择按钮颜色：' },
-  ko: { 'Ruxsat yo\'q.': '권한이 없습니다.', 'Kanal topilmadi.': '채널을 찾을 수 없습니다.', 'Post uchun rasm yuboring.': '게시물 사진을 보내세요.', 'Amal bekor qilindi.': '작업이 취소되었습니다.', 'Kanalni tanlang:': '채널을 선택하세요:', 'Tugma matnini yuboring:': '버튼 문구를 보내세요:', 'Tugma rangini tanlang:': '버튼 색상을 선택하세요:' },
-  tg: { 'Ruxsat yo\'q.': 'Иҷозат нест.', 'Kanal topilmadi.': 'Канал ёфт нашуд.', 'Post uchun rasm yuboring.': 'Барои пост акс фиристед.', 'Amal bekor qilindi.': 'Амалиёт бекор шуд.', 'Kanalni tanlang:': 'Каналро интихоб кунед:', 'Tugma matnini yuboring:': 'Матни тугмаро фиристед:', 'Tugma rangini tanlang:': 'Ранги тугмаро интихоб кунед:' }
+  ar: { 'Ruxsat yo\'q.': 'لا يوجد صلاحية.', 'Kanal topilmadi.': 'لم يتم العثور على القناة.', 'Post uchun rasm yuboring.': 'أرسل صورة للمنشور.', 'Amal bekor qilindi.': 'تم إلغاء العملية.', 'Kanalni tanlang:': 'اختر قناة:', 'Tugma matnini yuboring:': 'أرسل نص الزر:', 'Tugma rangini tanlang:': 'اختر لون الزر:',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'أرسل صورة للمنشور أو اضغط على «بدون صورة».',
+    'Yangi miqdorni kiriting (qoshish uchun).': 'أدخل المبلغ الجديد (لإضافة).',
+    'Yangi miqdorni kiriting (ayirish uchun).': 'أدخل المبلغ الجديد (للخصم).' },
+  zh: { 'Ruxsat yo\'q.': '无权限。', 'Kanal topilmadi.': '未找到频道。', 'Post uchun rasm yuboring.': '请发送帖子图片。', 'Amal bekor qilindi.': '操作已取消。', 'Kanalni tanlang:': '请选择频道：', 'Tugma matnini yuboring:': '请发送按钮文字：', 'Tugma rangini tanlang:': '请选择按钮颜色：',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': '请发送帖子图片，或按“无图”。',
+    'Yangi miqdorni kiriting (qoshish uchun).': '输入新金额（用于加款）。',
+    'Yangi miqdorni kiriting (ayirish uchun).': '输入新金额（用于扣款）。' },
+  ko: { 'Ruxsat yo\'q.': '권한이 없습니다.', 'Kanal topilmadi.': '채널을 찾을 수 없습니다.', 'Post uchun rasm yuboring.': '게시물 사진을 보내세요.', 'Amal bekor qilindi.': '작업이 취소되었습니다.', 'Kanalni tanlang:': '채널을 선택하세요:', 'Tugma matnini yuboring:': '버튼 문구를 보내세요:', 'Tugma rangini tanlang:': '버튼 색상을 선택하세요:',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': '게시물 사진을 보내거나 “사진 없음” 버튼을 누르세요.',
+    'Yangi miqdorni kiriting (qoshish uchun).': '새 금액을 입력하세요 (추가용).',
+    'Yangi miqdorni kiriting (ayirish uchun).': '새 금액을 입력하세요 (차감용).' },
+  tg: { 'Ruxsat yo\'q.': 'Иҷозат нест.', 'Kanal topilmadi.': 'Канал ёфт нашуд.', 'Post uchun rasm yuboring.': 'Барои пост акс фиристед.', 'Amal bekor qilindi.': 'Амалиёт бекор шуд.', 'Kanalni tanlang:': 'Каналро интихоб кунед:', 'Tugma matnini yuboring:': 'Матни тугмаро фиристед:', 'Tugma rangini tanlang:': 'Ранги тугмаро интихоб кунед:',
+    'Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.': 'Барои пост акс фиристед ё тугмаи «Бе акс» -ро пахш кунед.',
+    'Yangi miqdorni kiriting (qoshish uchun).': 'Миқдори навро ворид кунед (барои илова).',
+    'Yangi miqdorni kiriting (ayirish uchun).': 'Миқдори навро ворид кунед (барои кам кардан).' }
 };
 const keyboardTranslations = {
   en: { '➕ Kanal qo\'shish': '➕ Add channel', '✍️ Post yaratish': '✍️ Create post', '🗑 Kanalni o\'chirish': '🗑 Remove channel', '⬅️ Orqaga': '⬅️ Back', '🔗 Havolali tugma qo\'shish': '🔗 Add URL button', '✅ Postni yuborish': '✅ Publish post', '❌ Bekor qilish': '❌ Cancel', '🔵 Ko\'k': '🔵 Blue', '🟢 Yashil': '🟢 Green', '🔴 Qizil': '🔴 Red', '📊 Statistika': '📊 Statistics', '📣 Barchaga post yuborish': '📣 Broadcast post', '📢 Majburiy obunani sozlash': '📢 Set required subscription', '❌ Majburiy obunani o\'chirish': '❌ Disable required subscription', '📢 Kanalga obuna bo\'lish': '📢 Subscribe to channel', '✅ Obunani tekshirish': '✅ Check subscription' },
@@ -185,7 +206,12 @@ function tr(ctx, key, fallback = key) {
 }
 
 function languageKeyboard() {
-  return Markup.inlineKeyboard(Object.entries(languages).map(([code, name]) => [Markup.button.callback(name, `language:${code}`)]));
+  const entries = Object.entries(languages);
+  const rows = [];
+  for (let i = 0; i < entries.length; i += 4) {
+    rows.push(entries.slice(i, i + 4).map(([code, name]) => Markup.button.callback(name, `language:${code}`)));
+  }
+  return Markup.inlineKeyboard(rows);
 }
 
 function isAdmin(ctx) {
@@ -212,6 +238,7 @@ function adminKeyboard(ctx) {
 function adminBalanceKeyboard(personalId) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ Balansga pul qo\'shish', `admin:balance_add:${personalId}`), Markup.button.callback('➖ Balansdan pul ayirish', `admin:balance_subtract:${personalId}`)],
+    [Markup.button.callback('✉️ Userga xabar yuborish', `admin:message_user:${personalId}`)],
     [Markup.button.callback('⬅️ Orqaga', 'admin:user_search')]
   ]);
 }
@@ -795,6 +822,17 @@ bot.action('admin:user_search', async (ctx) => {
   return ctx.reply('Userning botdagi personal ID raqamini yuboring:', adminKeyboard(ctx));
 });
 
+bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  const targetId = normalizePersonalId(ctx.match[1]);
+  const found = findUserByPersonalId(targetId);
+  if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
+
+  ctx.session = { step: 'admin_user_message', targetKey: found.key, targetPersonalId: targetId };
+  return ctx.reply('Foydalanuvchiga yuboriladigan xabarni yozing:', adminKeyboard(ctx));
+});
+
 bot.action(/^admin:balance_(add|subtract):(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
@@ -1103,6 +1141,22 @@ bot.on('text', async (ctx) => {
       `Taklif qilgan dostlar IDlari: ${Array.isArray(account.referrals) ? account.referrals.join(', ') : '—'}`;
     ctx.session = { step: 'admin_user_search_result', targetKey: found.key, targetPersonalId: account.personalId };
     return ctx.reply(detail, adminBalanceKeyboard(account.personalId));
+  }
+
+  if (sessionState.step === 'admin_user_message') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const targetChat = Number(sessionState.targetKey);
+    if (!Number.isFinite(targetChat)) return ctx.reply('Foydalanuvchi topilmadi.', adminKeyboard(ctx));
+
+    try {
+      await bot.telegram.sendMessage(targetChat, trimmedText);
+      reset(ctx);
+      return ctx.reply('✅ Xabar foydalanuvchiga yuborildi.', adminKeyboard(ctx));
+    } catch (error) {
+      console.error('Admin user direct message failed:', error.response?.description || error.message);
+      reset(ctx);
+      return ctx.reply('❌ Xabar yuborishda xatolik yuz berdi. Foydalanuvchi botga start bosgan yoki chatni ochgan bo\'lishi kerak.', adminKeyboard(ctx));
+    }
   }
 
   if (sessionState.step === 'admin_balance_amount') {
