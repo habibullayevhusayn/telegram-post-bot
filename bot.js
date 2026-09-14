@@ -456,7 +456,7 @@ function normalizeChannel(value) {
 
 function normalizeBotUsername(rawValue) {
   const value = String(rawValue || '').trim();
-  if (!value) return 'your_bot_username';
+  if (!value) return 'postmboefdbot';
   if (value.startsWith('http://') || value.startsWith('https://')) {
     return value.replace(/^https?:\/\/t\.me\//i, '').replace(/^https?:\/\/telegram\.me\//i, '').split(/[/?#]/)[0].replace(/^@/, '');
   }
