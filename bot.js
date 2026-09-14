@@ -725,7 +725,7 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
-bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard()));
+bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard(ctx) }));
 
 bot.command('channels', showChannels);
 
@@ -749,7 +749,7 @@ bot.hears('👤 Profilim', (ctx) => {
 });
 
 bot.hears('💎 Premium', (ctx) => {
-  return ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard());
+  return ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard() });
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
@@ -792,24 +792,56 @@ bot.action('premium_paid', async (ctx) => {
 bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+
   const userId = Number(ctx.match[1]);
   const account = userData(userId);
   account.premium = true;
   saveData();
-  await bot.telegram.sendMessage(userId, '✅ Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.', mainKeyboard(userData(userId)));
-  await bot.telegram.sendMessage(ADMIN_TG_ID, `✅ Premium so\'rovi tasdiqlandi. Foydalanuvchi ID: ${userId}`, adminKeyboard(ctx));
+
+  try {
+    await bot.telegram.sendMessage(userId, '✅ Premium tarif tasdiqlandi. Endi premium imkoniyatlardan foydalanishingiz mumkin.', {
+      reply_markup: mainKeyboard(ctx).reply_markup
+    });
+  } catch (error) {
+    console.error('Premium approve user message failed:', error?.response?.description || error.message);
+  }
+
+  try {
+    await bot.telegram.sendMessage(ADMIN_TG_ID, `✅ Premium so\'rovi tasdiqlandi. Foydalanuvchi ID: ${userId}`, {
+      reply_markup: adminKeyboard(ctx).reply_markup
+    });
+  } catch (error) {
+    console.error('Premium approve admin notification failed:', error?.response?.description || error.message);
+  }
+
   return ctx.reply('✅ Foydalanuvchiga premium berildi.', adminKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+
   const userId = Number(ctx.match[1]);
   const account = userData(userId);
   account.premium = false;
   saveData();
-  await bot.telegram.sendMessage(userId, '❌ Premium so\'rovi rad etildi. Tekshiruvda muammo mavjud.', mainKeyboard(userData(userId)));
-  await bot.telegram.sendMessage(ADMIN_TG_ID, `❌ Premium so\'rovi rad etildi. Foydalanuvchi ID: ${userId}`, adminKeyboard(ctx));
+
+  try {
+    await bot.telegram.sendMessage(userId, '❌ Premium so\'rovi rad etildi. Tekshiruvda muammo mavjud.', {
+      reply_markup: mainKeyboard(ctx).reply_markup
+    });
+  } catch (error) {
+    console.error('Premium reject user message failed:', error?.response?.description || error.message);
+  }
+
+  try {
+    await bot.telegram.sendMessage(ADMIN_TG_ID, `❌ Premium so\'rovi rad etildi. Foydalanuvchi ID: ${userId}`, {
+      reply_markup: adminKeyboard(ctx).reply_markup
+    });
+  } catch (error) {
+    console.error('Premium reject admin notification failed:', error?.response?.description || error.message);
+  }
+
   return ctx.reply('❌ Premium so\'rovi rad etildi.', adminKeyboard(ctx));
 });
 
