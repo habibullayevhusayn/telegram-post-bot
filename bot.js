@@ -46,6 +46,7 @@ if (data.settings.requiredChannel && Array.isArray(data.settings.requiredChannel
 }
 if (!Array.isArray(data.settings.requiredChannels)) data.settings.requiredChannels = [];
 const ADMIN_USERNAME = 'habibullayev_28';
+const ADMIN_PUBLIC_USERNAME = '@habibullayev_28';
 const languages = {
   uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
   tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
@@ -558,8 +559,13 @@ function buildReferralText(ctx) {
 
 async function sendAdminMessage(ctx, messageText) {
   try {
-    const chat = await bot.telegram.getChat(ADMIN_USERNAME);
-    return bot.telegram.sendMessage(chat.id, `📬 Adminga murojaat\n\nFoydalanuvchi: ${ctx.from.username || ctx.from.first_name || ctx.from.id}\nBot ID: ${userData(ctx.from.id).personalId || '—'}\nTelegram ID: ${ctx.from.id}\n\n${messageText}`);
+    const chat = await bot.telegram.getChat(ADMIN_PUBLIC_USERNAME);
+    const account = userData(ctx.from.id);
+    return bot.telegram.sendMessage(chat.id, `📬 Adminga murojaat\n\n` +
+      `Foydalanuvchi: ${ctx.from.username || ctx.from.first_name || ctx.from.id}\n` +
+      `Bot personal ID: ${account.personalId || '—'}\n` +
+      `Telegram ID: ${ctx.from.id}\n\n` +
+      `${messageText}`);
   } catch (error) {
     console.error('Admin message send failed:', error.response?.description || error.message);
   }
@@ -586,38 +592,40 @@ async function chargeForPostIfNeeded(ctx) {
 
 async function rewardReferralIfEligible(ctx) {
   const account = userData(ctx.from.id);
-  if (!account.referredBy) return;
+  if (!account.referredBy || !account.personalId) return;
 
   const inviter = data.users[String(account.referredBy)];
-  if (!inviter || !inviter.referralRewarded) return;
+  if (!inviter) return;
+
+  inviter.referrals ||= [];
+  inviter.referralRewarded ||= [];
 
   if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.includes(account.personalId)) return;
 
   const channels = getRequiredChannels();
-  if (!channels.length) return;
-
   let eligible = true;
-  for (const channel of channels) {
-    try {
-      const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
-      if (!['creator', 'administrator', 'member'].includes(member.status)) {
+
+  if (channels.length) {
+    for (const channel of channels) {
+      try {
+        const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
+        if (!['creator', 'administrator', 'member'].includes(member.status)) {
+          eligible = false;
+          break;
+        }
+      } catch (error) {
         eligible = false;
         break;
       }
-    } catch (error) {
-      eligible = false;
-      break;
     }
   }
 
   if (!eligible) return;
 
   inviter.balance = Number(inviter.balance || 0) + 1000;
-  inviter.referrals ||= [];
   if (!inviter.referrals.includes(String(account.personalId))) {
     inviter.referrals.push(String(account.personalId));
   }
-  inviter.referralRewarded ||= [];
   inviter.referralRewarded.push(account.personalId);
   saveData();
 }
@@ -924,6 +932,13 @@ bot.action('publish', async (ctx) => {
     return ctx.reply(`✅ Broadcast ${sent} ta chatga yuborildi.`, mainKeyboard(ctx));
   }
   if (!selectedChannel || !post || !post.photo) return ctx.reply('Post ma\'lumotlari topilmadi.');
+
+  const charge = await chargeForPostIfNeeded(ctx);
+  if (!charge.ok) {
+    reset(ctx);
+    return ctx.reply(charge.message, mainKeyboard(ctx));
+  }
+
   const buttons = ctx.session.previewButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
   await ctx.telegram.sendPhoto(selectedChannel.id, post.photo, {
