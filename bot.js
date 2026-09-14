@@ -172,10 +172,10 @@ function userData(userId) {
     data.users[key] = {
       channels: [],
       language: null,
-      balance: 0,
       personalId: nextId,
       username: '',
       nickname: '',
+      premium: false,
       postLog: [],
       profileSeen: false
     };
@@ -183,7 +183,7 @@ function userData(userId) {
 
   data.users[key].channels ||= [];
   data.users[key].language ||= null;
-  data.users[key].balance ??= 0;
+  data.users[key].premium ??= false;
   data.users[key].postLog ||= [];
   data.users[key].profileSeen ??= false;
 
@@ -236,9 +236,8 @@ function adminKeyboard(ctx) {
   ]);
 }
 
-function adminBalanceKeyboard(personalId) {
+function adminUserSearchResultKeyboard(personalId) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('➕ Balansga pul qo\'shish', `admin:balance_add:${personalId}`), Markup.button.callback('➖ Balansdan pul ayirish', `admin:balance_subtract:${personalId}`)],
     [Markup.button.callback('✉️ Userga xabar yuborish', `admin:message_user:${personalId}`)],
     [Markup.button.callback('⬅️ Orqaga', 'admin:user_search')]
   ]);
@@ -522,8 +521,7 @@ function buildUserProfileText(user, fromId) {
     `Username: ${user.username || user.nickname || '—'}\n` +
     `Nickname: ${user.nickname || '—'}\n` +
     `Bot personal ID: ${user.personalId || '—'}\n` +
-    `Telegram ID: ${fromId}\n` +
-    `Balans: ${Number(user.balance || 0)} UZS`;
+    `Telegram ID: ${fromId}`;
 }
 
 async function sendToAdmin(message) {
@@ -554,12 +552,13 @@ function findUserByPersonalId(id) {
 function buildProfileText(ctx) {
   const account = userData(ctx.from.id);
   const lang = userLanguage(ctx);
+  const premiumText = Boolean(account.premium) ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}` : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
   return `👤 ${text.profile?.[lang] || 'Profilim'}\n\n` +
     `${text.botId?.[lang] || 'Botdagi ID'}: ${account.personalId}\n` +
     `${text.telegramId?.[lang] || 'Telegram ID'}: ${ctx.from.id}\n` +
     `${text.username?.[lang] || 'Username'}: ${ctx.from.username || '—'}\n` +
     `${text.nickname?.[lang] || 'Nickname'}: ${ctx.from.first_name || '—'}\n` +
-    `${text.balance?.[lang] || 'Balans'}: ${Number(account.balance || 0)} UZS`;
+    `${text.premiumStatus?.[lang] || 'Premium status'}: ${premiumText}`;
 }
 
 async function handleStart(ctx) {
@@ -591,13 +590,39 @@ async function sendAdminMessage(ctx, messageText) {
 
 async function chargeForPostIfNeeded(ctx) {
   const account = userData(ctx.from.id);
-  account.postLog ||= [];
-  account.postLog.push(Date.now());
+  if (account.premium) {
+    account.postLog ||= [];
+    account.postLog.push(Date.now());
+    saveData();
+    return { ok: true };
+  }
+
+  const now = Date.now();
+  const windowStart = now - 24 * 60 * 60 * 1000;
+  const recentLog = Array.isArray(account.postLog) ? account.postLog.filter((ts) => Number(ts) >= windowStart) : [];
+  account.postLog = recentLog;
+  if (recentLog.length >= 3) {
+    return { ok: false, message: tr(ctx, 'premiumFreeHint') };
+  }
+
+  account.postLog.push(now);
   saveData();
   return { ok: true };
 }
 
 
+
+function buildPremiumText(ctx) {
+  const account = userData(ctx.from.id);
+  const lang = userLanguage(ctx);
+  const status = Boolean(account.premium)
+    ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}`
+    : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
+  return `💎 ${text.premium?.[lang] || 'Premium'}\n\n` +
+    `${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
+    `${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
+    `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}`;
+}
 
 async function checkFullAdmin(ctx, username) {
   const chat = await ctx.telegram.getChat(username);
@@ -670,10 +695,7 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
-bot.command('balance', (ctx) => {
-  const account = userData(ctx.from.id);
-  return ctx.reply(`Balans: ${Number(account.balance || 0)} UZS`);
-});
+bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), mainKeyboard(ctx)));
 
 bot.command('channels', showChannels);
 
@@ -725,18 +747,6 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
 
   ctx.session = { step: 'admin_user_message', targetKey: found.key, targetPersonalId: targetId };
   return ctx.reply('Foydalanuvchiga yuboriladigan xabarni yozing:', adminKeyboard(ctx));
-});
-
-bot.action(/^admin:balance_(add|subtract):(\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  const mode = ctx.match[1] === 'add' ? 'add' : 'subtract';
-  const targetId = normalizePersonalId(ctx.match[2]);
-  const found = findUserByPersonalId(targetId);
-  if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
-
-  ctx.session = { step: 'admin_balance_amount', balanceMode: mode, balanceTarget: found.key, balanceTargetId: targetId };
-  return ctx.reply(`Yangi miqdorni kiriting (${mode === 'add' ? 'qoshish' : 'ayirish'} uchun).`, adminKeyboard(ctx));
 });
 
 bot.action('admin:stats', async (ctx) => {
@@ -979,6 +989,9 @@ bot.on('text', async (ctx) => {
     try {
       const channel = await checkFullAdmin(ctx, normalizeChannel(trimmedText));
       const account = userData(ctx.from.id);
+      if (!account.premium && account.channels.length >= 1) {
+        return ctx.reply(tr(ctx, 'premiumFreeHint'), mainKeyboard(ctx));
+      }
       if (!account.channels.some((item) => item.id === channel.id)) account.channels.push(channel);
       saveData();
       reset(ctx);
@@ -1025,10 +1038,9 @@ bot.on('text', async (ctx) => {
       `Username: ${account.username || '—'}\n` +
       `Nickname: ${account.nickname || '—'}\n` +
       `Bot personal ID: ${account.personalId || '—'}\n` +
-      `Telegram ID: ${found.key}\n` +
-      `Balans: ${Number(account.balance || 0)} UZS`;
+      `Telegram ID: ${found.key}`;
     ctx.session = { step: 'admin_user_search_result', targetKey: found.key, targetPersonalId: account.personalId };
-    return ctx.reply(detail, adminBalanceKeyboard(account.personalId));
+    return ctx.reply(detail, adminUserSearchResultKeyboard(account.personalId));
   }
 
   if (sessionState.step === 'admin_user_message') {
@@ -1047,41 +1059,6 @@ bot.on('text', async (ctx) => {
       reset(ctx);
       return ctx.reply('❌ Xabar yuborishda xatolik yuz berdi. Foydalanuvchi botga start bosgan yoki chatni ochgan bo\'lishi kerak.', adminKeyboard(ctx));
     }
-  }
-
-  if (sessionState.step === 'admin_balance_amount') {
-    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-    const amount = Number(normalizePersonalId(trimmedText));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return ctx.reply('Miqdor musbat son bo\'lishi kerak. Qayta kiriting:', adminKeyboard(ctx));
-    }
-
-    const target = data.users[sessionState.balanceTarget];
-    if (!target) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
-
-    const oldBalance = Number(target.balance || 0);
-    let newBalance = oldBalance;
-    if (sessionState.balanceMode === 'add') {
-      newBalance = oldBalance + amount;
-    } else {
-      newBalance = Math.max(0, oldBalance - amount);
-    }
-
-    target.balance = newBalance;
-    saveData();
-
-    const sign = sessionState.balanceMode === 'add' ? 'qo\'shildi' : 'ayirildi';
-    const direction = sessionState.balanceMode === 'add' ? 'qoshish' : 'ayirish';
-    const userMessage = `📣 Admin tomonidan balansingizga ${direction} orqali ${amount} UZS ${sign}.\n\nYangi balans: ${Number(target.balance || 0)} UZS`;
-
-    try {
-      await bot.telegram.sendMessage(Number(sessionState.balanceTarget), userMessage);
-    } catch (error) {
-      console.error('Balance change notification failed:', error.response?.description || error.message);
-    }
-
-    reset(ctx);
-    return ctx.reply(`✅ Balans ${direction} qilindi. Userga xabar yuborildi. Yangi balans: ${newBalance} UZS`, adminKeyboard(ctx));
   }
 
   return ctx.reply('Kerakli amalni pastki menyudan tanlang.', mainKeyboard(ctx));
