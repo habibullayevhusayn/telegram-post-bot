@@ -233,40 +233,68 @@ function formatRequiredChannelList() {
   return channels.map((channel) => `${channel.title || channel.username} (${channel.username || ''})`).join('\n');
 }
 
-async function broadcastPost(ctx, post) {
-  const recipients = new Set(Object.keys(data.users || {}));
-  for (const account of Object.values(data.users || {})) {
-    for (const channel of account.channels || []) recipients.add(String(channel.id));
+async function sendBroadcastToChat(ctx, chatId, post, replyMarkup) {
+  if (post.photo) {
+    await ctx.telegram.sendPhoto(chatId, post.photo, {
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined,
+      reply_markup: replyMarkup
+    });
+  } else {
+    await ctx.telegram.sendMessage(chatId, post.caption || ' ', {
+      reply_markup: replyMarkup,
+      entities: post.captionEntities || undefined
+    });
   }
+}
+
+async function broadcastPost(ctx, post) {
+  const userIds = new Set(Object.keys(data.users || {}));
+  const channelIds = new Set();
+
+  for (const account of Object.values(data.users || {})) {
+    for (const channel of account.channels || []) {
+      if (channel?.id) channelIds.add(String(channel.id));
+    }
+  }
+
   for (const channel of getRequiredChannels()) {
-    recipients.add(String(channel.id));
+    if (channel?.id) channelIds.add(String(channel.id));
   }
 
   const buttons = post.finalButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
   let sent = 0;
-  for (const chatId of recipients) {
+
+  for (const chatId of channelIds) {
     try {
-      for (const required of getRequiredChannels()) {
-        if (Number(chatId) > 0 && required?.id) {
-          const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
-          if (!['creator', 'administrator', 'member'].includes(member.status)) continue;
-        }
-      }
-      if (post.photo) {
-        await ctx.telegram.sendPhoto(chatId, post.photo, {
-          caption: post.caption || undefined,
-          caption_entities: post.caption ? post.captionEntities : undefined,
-          reply_markup: replyMarkup
-        });
-      } else {
-        await ctx.telegram.sendMessage(chatId, post.caption || ' ', { reply_markup: replyMarkup, entities: post.captionEntities || undefined });
-      }
+      await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
       sent += 1;
     } catch (error) {
-      console.error(`Broadcast to ${chatId} failed:`, error.response?.description || error.message);
+      console.error(`Broadcast to channel ${chatId} failed:`, error.response?.description || error.message);
     }
   }
+
+  for (const chatId of userIds) {
+    try {
+      let canSend = true;
+      for (const required of getRequiredChannels()) {
+        if (!required?.id) continue;
+        const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
+        if (!['creator', 'administrator', 'member'].includes(member.status)) {
+          canSend = false;
+          break;
+        }
+      }
+
+      if (!canSend) continue;
+      await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
+      sent += 1;
+    } catch (error) {
+      console.error(`Broadcast to user ${chatId} failed:`, error.response?.description || error.message);
+    }
+  }
+
   data.stats.broadcastsSent += 1;
   data.stats.postsSent += sent;
   saveData();
