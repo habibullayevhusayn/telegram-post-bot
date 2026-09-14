@@ -725,7 +725,7 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
-bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard(ctx) }));
+bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard()));
 
 bot.command('channels', showChannels);
 
@@ -749,7 +749,7 @@ bot.hears('👤 Profilim', (ctx) => {
 });
 
 bot.hears('💎 Premium', (ctx) => {
-  return ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: premiumInlineKeyboard() });
+  return ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard());
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
