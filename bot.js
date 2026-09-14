@@ -47,8 +47,6 @@ if (data.settings.requiredChannel && Array.isArray(data.settings.requiredChannel
 if (!Array.isArray(data.settings.requiredChannels)) data.settings.requiredChannels = [];
 const ADMIN_USERNAME = 'habibullayev_28';
 const ADMIN_PUBLIC_USERNAME = '@habibullayev_28';
-const BOT_LONG_DESCRIPTION = 'Eng zo\'r post boti <tg-emoji emoji-id="5285430309720966085">⚡</tg-emoji> Kanal postlarini boshqarish boti. Admin: @admn28';
-const BOT_SHORT_DESCRIPTION = 'Eng zo\'r post boti <tg-emoji emoji-id="5285430309720966085">⚡</tg-emoji> Kanal postlarini boshqarish boti. Admin: @admn28';
 const languages = {
   uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
   tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
@@ -1093,16 +1091,20 @@ bot.catch((error, ctx) => {
   }
 });
 
+async function setupBotAbout() {
+  try {
+    const aboutText = `🇺🇿 Kanallar uchun tugmali postlar yaratish boti. <tg-emoji emoji-id="50849744836855078101">💜</tg-emoji>\n🇷🇺 Бот для создания постов с кнопками для каналов. <tg-emoji emoji-id="5285430309720966085">🔥</tg-emoji>\nAdmin: @admn28`;
+    await bot.telegram.setMyShortDescription(aboutText);
+    console.log("🚀 Botning 'About' qismi premium emojilar bilan muvaffaqiyatli yangilandi!");
+  } catch (error) {
+    console.error("❌ About qismini yangilashda xatolik yuz berdi:", error.message);
+  }
+}
+
 bot.launch()
   .then(async () => {
     console.log('Bot ishga tushdi.');
-    try {
-      await bot.telegram.setMyDescription(BOT_LONG_DESCRIPTION);
-      await bot.telegram.setMyShortDescription(BOT_SHORT_DESCRIPTION);
-      console.log('Bot description/about qismi yangilandi.');
-    } catch (error) {
-      console.error('Bot description/about update failed:', error?.response?.description || error.message);
-    }
+    await setupBotAbout();
   })
   .catch((error) => {
     console.error('Bot launch failed:', error);
