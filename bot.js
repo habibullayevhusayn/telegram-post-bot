@@ -695,7 +695,7 @@ bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
 
 bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
-bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), mainKeyboard(ctx)));
+bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx) }));
 
 bot.command('channels', showChannels);
 
@@ -990,7 +990,7 @@ bot.on('text', async (ctx) => {
       const channel = await checkFullAdmin(ctx, normalizeChannel(trimmedText));
       const account = userData(ctx.from.id);
       if (!account.premium && account.channels.length >= 1) {
-        return ctx.reply(`<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}`, mainKeyboard(ctx));
+        return ctx.reply(`<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}`, { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx) });
       }
       if (!account.channels.some((item) => item.id === channel.id)) account.channels.push(channel);
       saveData();
