@@ -670,13 +670,21 @@ bot.use(async (ctx, next) => {
     userData(ctx.from.id);
     saveData();
   }
+
+  if (ctx.session?.step === 'admin_request_message') {
+    return next();
+  }
+
   const originalReply = ctx.reply.bind(ctx);
   ctx.reply = (message, ...args) => originalReply(localizeReply(ctx, message), ...args);
   const callbackData = ctx.callbackQuery?.data;
   const isStart = ctx.message?.text === '/start';
   const isSettings = ctx.message?.text === '/settings';
   if (isStart || isSettings || callbackData?.startsWith('language:') || callbackData === 'check_subscription' || isAdmin(ctx)) return next();
-  if (await requiredSubscription(ctx)) return next();
+
+  if (await requiredSubscription(ctx)) {
+    return next();
+  }
 });
 
 bot.start(async (ctx) => {
@@ -692,18 +700,18 @@ bot.start(async (ctx) => {
     const found = findUserByPersonalId(payload);
     if (found && found.key !== String(ctx.from.id)) {
       account.referredBy = found.key;
-      found.user.referrals ||= [];
-      if (!found.user.referrals.includes(String(account.personalId))) {
-        found.user.referrals.push(String(account.personalId));
+      found.account.referrals ||= [];
+      if (!found.account.referrals.includes(String(account.personalId))) {
+        found.account.referrals.push(String(account.personalId));
       }
-      if (!found.user.referralRewarded) found.user.referralRewarded = [];
+      found.account.referralRewarded ||= [];
     }
   }
 
   saveData();
+  await rewardReferralIfEligible(ctx);
   reset(ctx);
   if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
-  await rewardReferralIfEligible(ctx);
   return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
 });
 
@@ -754,7 +762,10 @@ bot.hears(Object.values(text.admin), (ctx) => {
 
 bot.action('check_subscription', async (ctx) => {
   await ctx.answerCbQuery();
-  if (await requiredSubscription(ctx)) return;
+  if (await requiredSubscription(ctx)) {
+    await rewardReferralIfEligible(ctx);
+    return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
+  }
   return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
 });
 
