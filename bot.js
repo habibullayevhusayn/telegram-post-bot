@@ -400,7 +400,7 @@ async function sendPreview(ctx) {
 
 async function sendMediaFromUrl(ctx, url) {
   const lower = String(url).trim().toLowerCase();
-  const botAddress = process.env.BOT_LINK || process.env.BOT_ID || 'https://t.me/your_bot_username';
+  const botAddress = getBotPublicLink();
   const footer = `\n\n📍 Bot manzili: ${botAddress}`;
 
   try {
@@ -452,6 +452,20 @@ function isUrl(value) {
 function normalizeChannel(value) {
   const trimmed = value.trim();
   return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+}
+
+function normalizeBotUsername(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return 'your_bot_username';
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    return value.replace(/^https?:\/\/t\.me\//i, '').replace(/^https?:\/\/telegram\.me\//i, '').split(/[/?#]/)[0].replace(/^@/, '');
+  }
+  return value.replace(/^@/, '').split(/[/?#]/)[0];
+}
+
+function getBotPublicLink() {
+  const configured = normalizeBotUsername(process.env.BOT_USERNAME || process.env.BOT_LINK || process.env.BOT_ID || '');
+  return `https://t.me/${configured}`;
 }
 
 function normalizePersonalId(value) {
@@ -534,7 +548,7 @@ function buildProfileText(ctx) {
 function buildReferralText(ctx) {
   const account = userData(ctx.from.id);
   const key = String(ctx.from.id);
-  const botLink = process.env.BOT_LINK || process.env.BOT_ID || 'https://t.me/your_bot_username';
+  const botLink = getBotPublicLink();
   const inviteLink = `${botLink}?start=${account.personalId}`;
   return `📣 Referal bo\'limi\n\n` +
     `Taklif qilish uchun havola:\n${inviteLink}\n\n` +
