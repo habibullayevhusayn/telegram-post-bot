@@ -135,7 +135,9 @@ function saveData() {
 
 function userData(userId) {
   const key = String(userId);
-  if (!data.users[key]) data.users[key] = { channels: [], language: null };
+  if (!data.users[key]) data.users[key] = { channels: [], language: null, scheduledPosts: [] };
+  data.users[key].channels ||= [];
+  data.users[key].scheduledPosts ||= [];
   return data.users[key];
 }
 
@@ -317,6 +319,8 @@ function channelActions(ctx, channelId) {
   return Markup.inlineKeyboard([
     [Markup.button.callback(localizeReply(ctx, '✍️ Post yaratish'), `compose:${channelId}`)],
     [Markup.button.callback(localizeReply(ctx, '🗑 Kanalni o\'chirish'), `remove:${channelId}`)],
+    [Markup.button.callback('📆 Rejalashtirilgan postlar', `scheduled_list:${channelId}`)],
+    [Markup.button.callback('🗑 Rejalashtirilganni bekor qilish', `scheduled_cancel:${channelId}`)],
     [Markup.button.callback(localizeReply(ctx, '⬅️ Orqaga'), 'channels')]
   ]);
 }
@@ -325,6 +329,7 @@ function composerKeyboard(ctx) {
   return Markup.inlineKeyboard([
     [Markup.button.callback(localizeReply(ctx, '🔗 Havolali tugma qo\'shish'), 'add_button')],
     [Markup.button.callback(localizeReply(ctx, '👀 Preview'), 'preview')],
+    [Markup.button.callback('⏰ Rejalashtirish', 'schedule')],
     [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
   ]);
 }
@@ -410,6 +415,105 @@ function isUrl(value) {
   } catch {
     return false;
   }
+}
+
+function parseScheduleDateTime(value) {
+  const trimmed = String(value).trim();
+  const match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const date = new Date(year, month - 1, day, hour, minute, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function buildScheduledPost(channel, post) {
+  return {
+    id: `${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
+    channel: { id: channel.id, title: channel.title, username: channel.username },
+    photo: post.photo || undefined,
+    caption: post.caption || '',
+    captionEntities: post.captionEntities || [],
+    buttons: post.buttons || [],
+    createdAt: new Date().toISOString(),
+    scheduledAt: null
+  };
+}
+
+function listScheduledPosts(ctx, channelId) {
+  const account = userData(ctx.from.id);
+  const channel = account.channels.find((item) => String(item.id) === String(channelId));
+  if (!channel) return ctx.reply('Kanal topilmadi.');
+  const items = (account.scheduledPosts || []).filter((item) => String(item.channel.id) === String(channel.id));
+  if (!items.length) return ctx.reply(`${channel.title} kanaliga rejalashtirilgan postlar yo'q.`, channelActions(ctx, channel.id));
+
+  const lines = items.map((item, index) => `${index + 1}. ${new Date(item.scheduledAt).toLocaleString()} - ${item.caption || 'Rasmli post'}`);
+  const buttons = items.map((item) => [Markup.button.callback(`🗑 ${new Date(item.scheduledAt).toLocaleString()}`, `cancel_schedule:${item.id}`)]);
+  return ctx.reply(`${channel.title} kanaliga rejalashtirilgan postlar:\n${lines.join('\n')}`, Markup.inlineKeyboard(buttons.concat([[Markup.button.callback('⬅️ Orqaga', 'channels')]])));
+}
+
+function cancelScheduledPost(ctx, channelId, scheduleId) {
+  const account = userData(ctx.from.id);
+  const channel = account.channels.find((item) => String(item.id) === String(channelId));
+  if (!channel) return ctx.reply('Kanal topilmadi.');
+  const before = account.scheduledPosts || [];
+  const item = before.find((entry) => entry.id === scheduleId && String(entry.channel.id) === String(channel.id));
+  if (!item) return ctx.reply('Rejalashtirilgan post topilmadi.', channelActions(ctx, channel.id));
+  account.scheduledPosts = before.filter((entry) => entry.id !== scheduleId);
+  saveData();
+  return ctx.reply(`✅ ${channel.title} kanaliga rejalashtirilgan post bekor qilindi.`, channelActions(ctx, channel.id));
+}
+
+async function sendScheduledPostToChannel(channelId, post) {
+  const markup = Markup.inlineKeyboard(post.buttons || []).reply_markup;
+  if (post.photo) {
+    await bot.telegram.sendPhoto(channelId, post.photo, {
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined,
+      reply_markup: markup
+    });
+  } else {
+    await bot.telegram.sendMessage(channelId, post.caption || ' ', {
+      reply_markup: markup,
+      entities: post.captionEntities || undefined
+    });
+  }
+}
+
+async function processScheduledPosts() {
+  const users = data.users || {};
+  const now = Date.now();
+  for (const [userId, account] of Object.entries(users)) {
+    const pending = [];
+    for (const item of account.scheduledPosts || []) {
+      const scheduled = new Date(item.scheduledAt).getTime();
+      if (scheduled > now) {
+        pending.push(item);
+        continue;
+      }
+      try {
+        await sendScheduledPostToChannel(item.channel.id, item);
+        data.stats.postsSent = Number(data.stats.postsSent || 0) + 1;
+      } catch (error) {
+        console.error(`Scheduled send failed for ${item.channel.id}:`, error.response?.description || error.message);
+        pending.push(item);
+        continue;
+      }
+    }
+    account.scheduledPosts = pending;
+  }
+  saveData();
+}
+
+function startScheduledPostWorker() {
+  setInterval(() => {
+    processScheduledPosts().catch((error) => console.error('Scheduled post processor failed:', error));
+  }, 20_000);
 }
 
 function normalizeChannel(value) {
@@ -583,6 +687,35 @@ bot.action(/^channel:(-?\d+)$/, async (ctx) => {
   return ctx.reply(`${channel.title} (${channel.username})`, channelActions(ctx, channel.id));
 });
 
+bot.action(/^scheduled_list:(-?\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  return listScheduledPosts(ctx, ctx.match[1]);
+});
+
+bot.action(/^scheduled_cancel:(-?\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const account = userData(ctx.from.id);
+  const channel = account.channels.find((item) => String(item.id) === ctx.match[1]);
+  if (!channel) return ctx.reply('Kanal topilmadi.');
+  const items = (account.scheduledPosts || []).filter((item) => String(item.channel.id) === String(channel.id));
+  if (!items.length) return ctx.reply(`${channel.title} kanaliga rejalashtirilgan postlar yo'q.`, channelActions(ctx, channel.id));
+  const buttons = items.map((item) => [Markup.button.callback(`❌ ${new Date(item.scheduledAt).toLocaleString()}`, `cancel_schedule:${item.id}`)]);
+  return ctx.reply(`${channel.title} rejalashtirilgan postlari`, Markup.inlineKeyboard(buttons.concat([[Markup.button.callback('⬅️ Orqaga', `channel:${channel.id}`)]])));
+});
+
+bot.action(/^cancel_schedule:([^:]+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const channelId = ctx.session?.selectedChannel?.id || ctx.callbackQuery?.data?.split(':')[1] || null;
+  const match = ctx.callbackQuery?.data?.match(/^cancel_schedule:([^:]+)$/);
+  if (!match) return ctx.reply('Rejalashtirilgan post topilmadi.');
+  const account = userData(ctx.from.id);
+  const item = (account.scheduledPosts || []).find((entry) => entry.id === match[1]);
+  if (!item) return ctx.reply('Rejalashtirilgan post topilmadi.');
+  account.scheduledPosts = (account.scheduledPosts || []).filter((entry) => entry.id !== match[1]);
+  saveData();
+  return ctx.reply(`✅ ${item.channel.title} kanaliga rejalashtirilgan post bekor qilindi.`, channelActions(ctx, item.channel.id));
+});
+
 bot.action(/^remove:(-?\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const account = userData(ctx.from.id);
@@ -660,6 +793,13 @@ bot.action(/^button_style:(primary|success|danger)$/, async (ctx) => {
   sessionState.pendingButtonUrl = undefined;
   sessionState.step = 'buttons';
   return ctx.reply('Rangli tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?', composerKeyboard(ctx));
+});
+
+bot.action('schedule', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!ctx.session?.post) return ctx.reply('Avval post yaratishni boshlang.');
+  ctx.session.step = 'schedule_datetime';
+  return ctx.reply('Rejalashtirish vaqtini YYYY-MM-DD HH:MM formatida yuboring:', Markup.inlineKeyboard([[Markup.button.callback('Bekor qilish', 'cancel')]]));
 });
 
 bot.action('preview', async (ctx) => {
@@ -764,6 +904,30 @@ bot.on('text', async (ctx) => {
     return ctx.reply('Tugma rangini tanlang:', buttonStyleKeyboard(ctx));
   }
 
+  if (sessionState.step === 'schedule_datetime') {
+    const date = parseScheduleDateTime(trimmedText);
+    if (!date) return ctx.reply('Vaqt formati noto\'g\'ri. YYYY-MM-DD HH:MM ko\'rinishida yuboring:');
+    if (date.getTime() <= Date.now()) return ctx.reply('Rejalashtirish vaqti hozirdan keyin bo\'lishi kerak.');
+    const account = userData(ctx.from.id);
+    const channel = sessionState.selectedChannel;
+    if (!channel) return ctx.reply('Kanal tanlanmagan.');
+    const item = {
+      id: `${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
+      channel: { id: channel.id, title: channel.title, username: channel.username },
+      photo: sessionState.post.photo || undefined,
+      caption: sessionState.post.caption || '',
+      captionEntities: sessionState.post.captionEntities || [],
+      buttons: sessionState.post.buttons || [],
+      createdAt: new Date().toISOString(),
+      scheduledAt: date.toISOString()
+    };
+    account.scheduledPosts ||= [];
+    account.scheduledPosts.push(item);
+    saveData();
+    reset(ctx);
+    return ctx.reply(`✅ Post ${channel.title} kanaliga ${date.toLocaleString()} vaqti uchun rejalashtirildi.`, mainKeyboard(ctx));
+  }
+
   return ctx.reply('Kerakli amalni pastki menyudan tanlang.', mainKeyboard(ctx));
 });
 
@@ -775,7 +939,10 @@ bot.catch((error, ctx) => {
 });
 
 bot.launch()
-  .then(() => console.log('Bot ishga tushdi.'))
+  .then(() => {
+    console.log('Bot ishga tushdi.');
+    startScheduledPostWorker();
+  })
   .catch((error) => {
     console.error('Bot launch failed:', error);
   });
