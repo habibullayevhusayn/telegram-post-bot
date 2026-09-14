@@ -470,16 +470,18 @@ function cancelScheduledPost(ctx, channelId, scheduleId) {
 }
 
 async function sendScheduledPostToChannel(channelId, post) {
-  const markup = Markup.inlineKeyboard(post.buttons || []).reply_markup;
+  const buttons = post.buttons || [];
+  const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
+
   if (post.photo) {
     await bot.telegram.sendPhoto(channelId, post.photo, {
       caption: post.caption || undefined,
       caption_entities: post.caption ? post.captionEntities : undefined,
-      reply_markup: markup
+      reply_markup: replyMarkup
     });
   } else {
     await bot.telegram.sendMessage(channelId, post.caption || ' ', {
-      reply_markup: markup,
+      reply_markup: replyMarkup,
       entities: post.captionEntities || undefined
     });
   }
@@ -488,14 +490,18 @@ async function sendScheduledPostToChannel(channelId, post) {
 async function processScheduledPosts() {
   const users = data.users || {};
   const now = Date.now();
+
   for (const [userId, account] of Object.entries(users)) {
     const pending = [];
+
     for (const item of account.scheduledPosts || []) {
       const scheduled = new Date(item.scheduledAt).getTime();
+
       if (scheduled > now) {
         pending.push(item);
         continue;
       }
+
       try {
         await sendScheduledPostToChannel(item.channel.id, item);
         data.stats.postsSent = Number(data.stats.postsSent || 0) + 1;
@@ -505,15 +511,18 @@ async function processScheduledPosts() {
         continue;
       }
     }
+
     account.scheduledPosts = pending;
   }
+
+  data.stats.postsSent = Number(data.stats.postsSent || 0);
   saveData();
 }
 
 function startScheduledPostWorker() {
   setInterval(() => {
     processScheduledPosts().catch((error) => console.error('Scheduled post processor failed:', error));
-  }, 20_000);
+  }, 5_000);
 }
 
 function normalizeChannel(value) {
