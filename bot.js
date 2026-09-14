@@ -47,6 +47,8 @@ if (data.settings.requiredChannel && Array.isArray(data.settings.requiredChannel
 if (!Array.isArray(data.settings.requiredChannels)) data.settings.requiredChannels = [];
 const ADMIN_USERNAME = 'habibullayev_28';
 const ADMIN_PUBLIC_USERNAME = '@habibullayev_28';
+const BOT_LONG_DESCRIPTION = 'Eng zo\'r post boti <tg-emoji emoji-id="5285430309720966085">⚡</tg-emoji> Kanal postlarini boshqarish boti. Admin: @admn28';
+const BOT_SHORT_DESCRIPTION = 'Eng zo\'r post boti <tg-emoji emoji-id="5285430309720966085">⚡</tg-emoji> Kanal postlarini boshqarish boti. Admin: @admn28';
 const languages = {
   uz: 'O\'zbekcha', en: 'English', ru: 'Русский', ar: 'العربية',
   tr: 'Türkçe', zh: '中文', ko: '한국어', tg: 'Тоҷикӣ'
@@ -578,7 +580,10 @@ async function handleStart(ctx) {
   saveData();
   reset(ctx);
   if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
-  return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
+  return ctx.reply('<tg-emoji emoji-id="5454380420336466255">✋</tg-emoji> Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', {
+    parse_mode: 'HTML',
+    reply_markup: mainKeyboard(ctx)
+  });
 }
 
 async function sendAdminMessage(ctx, messageText) {
@@ -1089,7 +1094,16 @@ bot.catch((error, ctx) => {
 });
 
 bot.launch()
-  .then(() => console.log('Bot ishga tushdi.'))
+  .then(async () => {
+    console.log('Bot ishga tushdi.');
+    try {
+      await bot.telegram.setMyDescription(BOT_LONG_DESCRIPTION);
+      await bot.telegram.setMyShortDescription(BOT_SHORT_DESCRIPTION);
+      console.log('Bot description/about qismi yangilandi.');
+    } catch (error) {
+      console.error('Bot description/about update failed:', error?.response?.description || error.message);
+    }
+  })
   .catch((error) => {
     console.error('Bot launch failed:', error);
   });
