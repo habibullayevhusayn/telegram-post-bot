@@ -54,12 +54,18 @@ const languages = {
 const text = {
   welcome: { uz: 'Tilni tanlang:', en: 'Choose your language:', ru: 'Выберите язык:', ar: 'اختر لغتك:', tr: 'Dilinizi seçin:', zh: '请选择语言：', ko: '언어를 선택하세요:', tg: 'Забонро интихоб кунед:' },
   channels: { uz: '📢 Kanallar ro\'yxati', en: '📢 Channel list', ru: '📢 Список каналов', ar: '📢 قائمة القنوات', tr: '📢 Kanal listesi', zh: '📢 频道列表', ko: '📢 채널 목록', tg: '📢 Рӯйхати каналҳо' },
-  addChannel: { uz: '➕ Kanal qo\'shish', en: '➕ Add channel', ru: '➕ Добавить канал', ar: '➕ إضافة قناة', tr: '➕ Kanal ekle', zh: '➕ 添加频道', ko: '➕ 채널 추가', tg: '➕ Иловаи канал' },
+  addChannel: { uz: '➕ Kanal qo\'shish', en: '➕ Add channel', ru: '➕ Добавить канал', ar: '➕ إضافة قناة', tr: '➕ Kanal ekle', zh: '➕ 添加频道', ko: '➕ 채널 추가', tg: '➕ Иловаи kanal' },
   settings: { uz: '⚙️ Sozlamalar', en: '⚙️ Settings', ru: '⚙️ Настройки', ar: '⚙️ الإعدادات', tr: '⚙️ Ayarlar', zh: '⚙️ 设置', ko: '⚙️ 설정', tg: '⚙️ Танзимот' },
   admin: { uz: '🛠 Admin panel', en: '🛠 Admin panel', ru: '🛠 Панель администратора', ar: '🛠 لوحة المشرف', tr: '🛠 Yönetici paneli', zh: '🛠 管理员面板', ko: '🛠 관리자 패널', tg: '🛠 Панели админ' },
   languageSaved: { uz: '✅ Til saqlandi.', en: '✅ Language saved.', ru: '✅ Язык сохранён.', ar: '✅ تم حفظ اللغة.', tr: '✅ Dil kaydedildi.', zh: '✅ 语言已保存。', ko: '✅ 언어가 저장되었습니다.', tg: '✅ Забон нигоҳ дошта шуд.' },
   createPost: { uz: '📨 Post yuborish', en: '📨 Create Post', ru: '📨 Создать пост', ar: '📨 إنشاء منشور', tr: '📨 Gönderi oluştur', zh: '📨 创建帖子', ko: '📨 게시물 만들기', tg: '📨 Эҷоди пост' },
-  videoSave: { uz: '🎬 Video saqlash', en: '🎬 Save video', ru: '🎬 Сохранить видео', ar: '🎬 حفظ فيديو', tr: '🎬 Video kaydet', zh: '🎬 保存视频', ko: '🎬 영상 저장', tg: '🎬 Сабти видео' }
+  videoSave: { uz: '🎬 Video saqlash', en: '🎬 Save video', ru: '🎬 Сохранить видео', ar: '🎬 حفظ فيديو', tr: '🎬 Video kaydet', zh: '🎬 保存视频', ko: '🎬 영상 저장', tg: '🎬 Сабти видео' },
+  profile: { uz: 'Profilim', en: 'My Profile', ru: 'Мой профиль', ar: 'صفحتي', tr: 'Profilim', zh: '我的资料', ko: '내 프로필', tg: 'Профили ман' },
+  botId: { uz: 'Botdagi ID', en: 'Bot ID', ru: 'ID бота', ar: 'معرف البوت', tr: 'Bot ID', zh: '机器人 ID', ko: '봇 ID', tg: 'ID-и бот' },
+  telegramId: { uz: 'Telegram ID', en: 'Telegram ID', ru: 'Telegram ID', ar: 'معرف تلغرام', tr: 'Telegram ID', zh: 'Telegram ID', ko: '텔레그램 ID', tg: 'ID-и Телеграм' },
+  username: { uz: 'Username', en: 'Username', ru: 'Username', ar: 'اسم المستخدم', tr: 'Kullanıcı adı', zh: '用户名', ko: '사용자 이름', tg: 'Номи корбар' },
+  nickname: { uz: 'Nickname', en: 'Nickname', ru: 'Nickname', ar: 'اسم المستعار', tr: 'Takma ad', zh: '昵称', ko: '닉네임', tg: 'Никнейм' },
+  balance: { uz: 'Balans', en: 'Balance', ru: 'Баланс', ar: 'الرصيد', tr: 'Bakiye', zh: '余额', ko: '잔액', tg: 'Баланс' }
 };
 const replyTranslations = {
   en: {
@@ -531,18 +537,7 @@ async function sendToAdmin(message) {
 
 async function chargeOrAllowPost(ctx) {
   const account = userData(ctx.from.id);
-  const postLog = Array.isArray(account.postLog) ? account.postLog : [];
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const recent = postLog.filter((time) => Number(time) > cutoff);
-  account.postLog = recent;
-
-  if (recent.length >= 2) {
-    if ((Number(account.balance) || 0) < 1000) {
-      return { ok: false, message: 'Sizning balansingizda yetarli mablag\' yo\'q. Har bir qo\'shimcha post uchun 1000 UZS yechiladi.' };
-    }
-    account.balance = Number(account.balance || 0) - 1000;
-  }
-
+  account.postLog ||= [];
   account.postLog.push(Date.now());
   saveData();
   return { ok: true };
@@ -558,12 +553,13 @@ function findUserByPersonalId(id) {
 
 function buildProfileText(ctx) {
   const account = userData(ctx.from.id);
-  return `👤 Profilim\n\n` +
-    `Botdagi ID: ${account.personalId}\n` +
-    `Telegram ID: ${ctx.from.id}\n` +
-    `Username: ${ctx.from.username || '—'}\n` +
-    `Nickname: ${ctx.from.first_name || '—'}\n` +
-    `Balans: ${Number(account.balance || 0)} UZS`;
+  const lang = userLanguage(ctx);
+  return `👤 ${text.profile?.[lang] || 'Profilim'}\n\n` +
+    `${text.botId?.[lang] || 'Botdagi ID'}: ${account.personalId}\n` +
+    `${text.telegramId?.[lang] || 'Telegram ID'}: ${ctx.from.id}\n` +
+    `${text.username?.[lang] || 'Username'}: ${ctx.from.username || '—'}\n` +
+    `${text.nickname?.[lang] || 'Nickname'}: ${ctx.from.first_name || '—'}\n` +
+    `${text.balance?.[lang] || 'Balans'}: ${Number(account.balance || 0)} UZS`;
 }
 
 async function handleStart(ctx) {
@@ -595,19 +591,8 @@ async function sendAdminMessage(ctx, messageText) {
 
 async function chargeForPostIfNeeded(ctx) {
   const account = userData(ctx.from.id);
-  const now = Date.now();
-  const windowStart = now - 24 * 60 * 60 * 1000;
-  const recentLog = Array.isArray(account.postLog) ? account.postLog.filter((ts) => Number(ts) >= windowStart) : [];
-  account.postLog = recentLog;
-
-  if (recentLog.length >= 2) {
-    if ((Number(account.balance) || 0) < 1000) {
-      return { ok: false, message: 'Ushbu post uchun yetarli balans yo\'q. Har bir qo\'shimcha post uchun 1000 UZS yechiladi.' };
-    }
-    account.balance = Number(account.balance || 0) - 1000;
-  }
-
-  account.postLog.push(now);
+  account.postLog ||= [];
+  account.postLog.push(Date.now());
   saveData();
   return { ok: true };
 }
@@ -934,11 +919,7 @@ bot.action('publish', async (ctx) => {
   }
   if (!selectedChannel || !post || (!post.photo && !post.caption)) return ctx.reply('Post ma\'lumotlari topilmadi.');
 
-  const charge = await chargeForPostIfNeeded(ctx);
-  if (!charge.ok) {
-    reset(ctx);
-    return ctx.reply(charge.message, mainKeyboard(ctx));
-  }
+  await chargeForPostIfNeeded(ctx);
 
   const buttons = ctx.session.previewButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
