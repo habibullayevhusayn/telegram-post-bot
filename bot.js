@@ -193,7 +193,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '📣 Referal'], ['📬 Adminga murojaat']];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '📣 Referal']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -206,6 +206,13 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
     [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
     [Markup.button.callback('🔍 Userni qidirish', 'admin:user_search')]
+  ]);
+}
+
+function adminBalanceKeyboard(personalId) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ Balansga pul qo\'shish', `admin:balance_add:${personalId}`), Markup.button.callback('➖ Balansdan pul ayirish', `admin:balance_subtract:${personalId}`)],
+    [Markup.button.callback('⬅️ Orqaga', 'admin:user_search')]
   ]);
 }
 
@@ -671,10 +678,6 @@ bot.use(async (ctx, next) => {
     saveData();
   }
 
-  if (ctx.session?.step === 'admin_request_message') {
-    return next();
-  }
-
   const originalReply = ctx.reply.bind(ctx);
   ctx.reply = (message, ...args) => originalReply(localizeReply(ctx, message), ...args);
   const callbackData = ctx.callbackQuery?.data;
@@ -750,11 +753,6 @@ bot.hears('📣 Referal', (ctx) => {
   return ctx.reply(buildReferralText(ctx), mainKeyboard(ctx));
 });
 
-bot.hears('📬 Adminga murojaat', (ctx) => {
-  ctx.session = { step: 'admin_request_message' };
-  return ctx.reply('Adminga yuboriladigan xabarni yozing:', mainKeyboard(ctx));
-});
-
 bot.hears(Object.values(text.admin), (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   return ctx.reply('🛠 Admin panel', adminKeyboard(ctx));
@@ -774,6 +772,18 @@ bot.action('admin:user_search', async (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   ctx.session = { step: 'admin_user_search' };
   return ctx.reply('Userning botdagi personal ID raqamini yuboring:', adminKeyboard(ctx));
+});
+
+bot.action(/^admin:balance_(add|subtract):(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  const mode = ctx.match[1] === 'add' ? 'add' : 'subtract';
+  const targetId = normalizePersonalId(ctx.match[2]);
+  const found = findUserByPersonalId(targetId);
+  if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
+
+  ctx.session = { step: 'admin_balance_amount', balanceMode: mode, balanceTarget: found.key, balanceTargetId: targetId };
+  return ctx.reply(`Yangi miqdorni kiriting (${mode === 'add' ? 'qoshish' : 'ayirish'} uchun).`, adminKeyboard(ctx));
 });
 
 bot.action('admin:stats', async (ctx) => {
@@ -1051,14 +1061,43 @@ bot.on('text', async (ctx) => {
       `Balans: ${Number(account.balance || 0)} UZS\n` +
       `Taklif qilganlar: ${Array.isArray(account.referrals) ? account.referrals.length : 0}\n` +
       `Taklif qilgan dostlar IDlari: ${Array.isArray(account.referrals) ? account.referrals.join(', ') : '—'}`;
-    reset(ctx);
-    return ctx.reply(detail, adminKeyboard(ctx));
+    ctx.session = { step: 'admin_user_search_result', targetKey: found.key, targetPersonalId: account.personalId };
+    return ctx.reply(detail, adminBalanceKeyboard(account.personalId));
   }
 
-  if (sessionState.step === 'admin_request_message') {
-    await sendAdminMessage(ctx, trimmedText);
+  if (sessionState.step === 'admin_balance_amount') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const amount = Number(normalizePersonalId(trimmedText));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return ctx.reply('Miqdor musbat son bo\'lishi kerak. Qayta kiriting:', adminKeyboard(ctx));
+    }
+
+    const target = data.users[sessionState.balanceTarget];
+    if (!target) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
+
+    const oldBalance = Number(target.balance || 0);
+    let newBalance = oldBalance;
+    if (sessionState.balanceMode === 'add') {
+      newBalance = oldBalance + amount;
+    } else {
+      newBalance = Math.max(0, oldBalance - amount);
+    }
+
+    target.balance = newBalance;
+    saveData();
+
+    const sign = sessionState.balanceMode === 'add' ? 'qo\'shildi' : 'ayirildi';
+    const direction = sessionState.balanceMode === 'add' ? 'qoshish' : 'ayirish';
+    const userMessage = `📣 Admin tomonidan balansingizga ${direction} orqali ${amount} UZS ${sign}.\n\nYangi balans: ${Number(target.balance || 0)} UZS`;
+
+    try {
+      await bot.telegram.sendMessage(Number(sessionState.balanceTarget), userMessage);
+    } catch (error) {
+      console.error('Balance change notification failed:', error.response?.description || error.message);
+    }
+
     reset(ctx);
-    return ctx.reply('✅ Murojaatingiz adminga yuborildi.', mainKeyboard(ctx));
+    return ctx.reply(`✅ Balans ${direction} qilindi. Userga xabar yuborildi. Yangi balans: ${newBalance} UZS`, adminKeyboard(ctx));
   }
 
   return ctx.reply('Kerakli amalni pastki menyudan tanlang.', mainKeyboard(ctx));
