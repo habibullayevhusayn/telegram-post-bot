@@ -645,7 +645,7 @@ async function chargeForPostIfNeeded(ctx) {
   const recentLog = Array.isArray(account.postLog) ? account.postLog.filter((ts) => Number(ts) >= windowStart) : [];
   account.postLog = recentLog;
   if (recentLog.length >= 3) {
-    return { ok: false, message: `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}` };
+    return { ok: false, message: `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'Limit tugadi. Premium ta`rifni sotib oling!')}` };
   }
 
   account.postLog.push(now);
@@ -681,6 +681,15 @@ function premiumInlineKeyboard() {
 async function checkFullAdmin(ctx, username) {
   const chat = await ctx.telegram.getChat(username);
   if (chat.type !== 'channel') throw new Error('Bu username kanalga tegishli emas.');
+
+  try {
+    const userMember = await ctx.telegram.getChatMember(chat.id, ctx.from.id);
+    if (!['creator', 'administrator'].includes(userMember.status)) {
+      throw new Error('Kanalni qo\'shish uchun kanalda admin yoki ega bo\'lishingiz kerak.');
+    }
+  } catch (error) {
+    throw new Error('Kanalni qo\'shish uchun kanalda admin yoki ega bo\'lishingiz kerak.');
+  }
 
   const botInfo = await ctx.telegram.getMe();
   const member = await ctx.telegram.getChatMember(chat.id, botInfo.id);
@@ -1206,7 +1215,7 @@ bot.on('text', async (ctx) => {
       const channel = await checkFullAdmin(ctx, normalizeChannel(trimmedText));
       const account = userData(ctx.from.id);
       if (!account.premium && account.channels.length >= 1) {
-        return ctx.reply(`<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}`, { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx) });
+        return ctx.reply(`<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'Limit tugadi. Premium ta`rifni sotib oling!')}`, { parse_mode: 'HTML', reply_markup: mainKeyboard(ctx) });
       }
       if (!account.channels.some((item) => item.id === channel.id)) account.channels.push(channel);
       saveData();
