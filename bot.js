@@ -234,7 +234,10 @@ function statsText() {
 async function requiredSubscription(ctx) {
   if (isAdmin(ctx)) return true;
   const channels = getRequiredChannels();
-  if (!channels.length) return true;
+  if (!channels.length) {
+    await rewardReferralIfEligible(ctx);
+    return true;
+  }
 
   for (const channel of channels) {
     try {
@@ -250,6 +253,7 @@ async function requiredSubscription(ctx) {
     }
   }
 
+  await rewardReferralIfEligible(ctx);
   return true;
 }
 
@@ -779,10 +783,9 @@ bot.hears(Object.values(text.admin), (ctx) => {
 bot.action('check_subscription', async (ctx) => {
   await ctx.answerCbQuery();
   if (await requiredSubscription(ctx)) {
-    await rewardReferralIfEligible(ctx);
-    return handleStart(ctx);
+    return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
   }
-  return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
+  return ctx.reply('Botdan foydalanish uchun majburiy kanallarga obuna bo\'ling.', mainKeyboard(ctx));
 });
 
 bot.action('admin:user_search', async (ctx) => {
