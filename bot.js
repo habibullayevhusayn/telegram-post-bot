@@ -135,7 +135,43 @@ function saveData() {
 
 function userData(userId) {
   const key = String(userId);
-  if (!data.users[key]) data.users[key] = { channels: [], language: null };
+  if (!data.users[key]) {
+    const usedIds = Object.values(data.users || {})
+      .map((item) => Number(item.personalId))
+      .filter((id) => Number.isFinite(id));
+    const nextId = usedIds.length ? Math.max(...usedIds) + 1 : 1728000;
+
+    data.users[key] = {
+      channels: [],
+      language: null,
+      balance: 0,
+      personalId: nextId,
+      username: '',
+      nickname: '',
+      referrals: [],
+      referredBy: null,
+      referralRewarded: [],
+      postLog: [],
+      profileSeen: false
+    };
+  }
+
+  data.users[key].channels ||= [];
+  data.users[key].language ||= null;
+  data.users[key].balance ??= 0;
+  data.users[key].referrals ||= [];
+  data.users[key].postLog ||= [];
+  data.users[key].referralRewarded ||= [];
+  data.users[key].profileSeen ??= false;
+
+  if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
+    const usedIds = Object.values(data.users || {})
+      .map((item) => Number(item.personalId))
+      .filter((id) => Number.isFinite(id));
+    const nextId = usedIds.length ? Math.max(...usedIds) + 1 : 1728000;
+    data.users[key].personalId = nextId;
+  }
+
   return data.users[key];
 }
 
@@ -156,7 +192,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')]];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '📣 Referal'], ['📬 Adminga murojaat']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -167,7 +203,8 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📣 Barchaga post yuborish'), 'admin:broadcast')],
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
-    [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')]
+    [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
+    [Markup.button.callback('🔍 Userni qidirish', 'admin:user_search')]
   ]);
 }
 
@@ -417,6 +454,160 @@ function normalizeChannel(value) {
   return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
 }
 
+function normalizePersonalId(value) {
+  const input = String(value).trim();
+  return input.replace(/\D/g, '');
+}
+
+function findUserByPersonalId(value) {
+  const target = String(value);
+  for (const [key, user] of Object.entries(data.users || {})) {
+    if (String(user.personalId || user.id || '').trim() === target) return { key, user };
+  }
+  return null;
+}
+
+function buildUserProfileText(user, fromId) {
+  return `👤 Foydalanuvchi profili\n\n` +
+    `Username: ${user.username || user.nickname || '—'}\n` +
+    `Nickname: ${user.nickname || '—'}\n` +
+    `Bot personal ID: ${user.personalId || '—'}\n` +
+    `Telegram ID: ${fromId}\n` +
+    `Balans: ${Number(user.balance || 0)} UZS\n` +
+    `Taklif qilganlar: ${Array.isArray(user.referrals) ? user.referrals.length : 0}`;
+}
+
+async function sendToAdmin(message) {
+  try {
+    const chat = await bot.telegram.getChat(ADMIN_USERNAME);
+    return bot.telegram.sendMessage(chat.id, message);
+  } catch (error) {
+    console.error('Admin message send failed:', error.message);
+  }
+}
+
+async function chargeOrAllowPost(ctx) {
+  const account = userData(ctx.from.id);
+  const postLog = Array.isArray(account.postLog) ? account.postLog : [];
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const recent = postLog.filter((time) => Number(time) > cutoff);
+  account.postLog = recent;
+
+  if (recent.length >= 2) {
+    if ((Number(account.balance) || 0) < 1000) {
+      return { ok: false, message: 'Sizning balansingizda yetarli mablag\' yo\'q. Har bir qo\'shimcha post uchun 1000 UZS yechiladi.' };
+    }
+    account.balance = Number(account.balance || 0) - 1000;
+  }
+
+  account.postLog.push(Date.now());
+  saveData();
+  return { ok: true };
+}
+
+function normalizeReferralPayload(payload) {
+  return String(payload || '').trim();
+}
+
+function findUserByPersonalId(id) {
+  const target = String(id).trim();
+  for (const [key, account] of Object.entries(data.users || {})) {
+    if (String(account.personalId) === target) return { key, account };
+  }
+  return null;
+}
+
+function buildProfileText(ctx) {
+  const account = userData(ctx.from.id);
+  const invited = Array.isArray(account.referrals) ? account.referrals.length : 0;
+  const invitedNames = Array.isArray(account.referrals) ? account.referrals.map((id) => String(id)).join(', ') : '—';
+  return `👤 Profilim\n\n` +
+    `Botdagi ID: ${account.personalId}\n` +
+    `Telegram ID: ${ctx.from.id}\n` +
+    `Username: ${ctx.from.username || '—'}\n` +
+    `Nickname: ${ctx.from.first_name || '—'}\n` +
+    `Balans: ${Number(account.balance || 0)} UZS\n` +
+    `Taklif qilgan dostlar: ${invited}\n` +
+    `Taklif qilgan dostlar botdagi IDlari: ${invitedNames}`;
+}
+
+function buildReferralText(ctx) {
+  const account = userData(ctx.from.id);
+  const key = String(ctx.from.id);
+  const botLink = process.env.BOT_LINK || process.env.BOT_ID || 'https://t.me/your_bot_username';
+  const inviteLink = `${botLink}?start=${account.personalId}`;
+  return `📣 Referal bo\'limi\n\n` +
+    `Taklif qilish uchun havola:\n${inviteLink}\n\n` +
+    `Taklif qilinganlar: ${Array.isArray(account.referrals) ? account.referrals.length : 0}\n` +
+    `Balans: ${Number(account.balance || 0)} UZS`;
+}
+
+async function sendAdminMessage(ctx, messageText) {
+  try {
+    const chat = await bot.telegram.getChat(ADMIN_USERNAME);
+    return bot.telegram.sendMessage(chat.id, `📬 Adminga murojaat\n\nFoydalanuvchi: ${ctx.from.username || ctx.from.first_name || ctx.from.id}\nBot ID: ${userData(ctx.from.id).personalId || '—'}\nTelegram ID: ${ctx.from.id}\n\n${messageText}`);
+  } catch (error) {
+    console.error('Admin message send failed:', error.response?.description || error.message);
+  }
+}
+
+async function chargeForPostIfNeeded(ctx) {
+  const account = userData(ctx.from.id);
+  const now = Date.now();
+  const windowStart = now - 24 * 60 * 60 * 1000;
+  const recentLog = Array.isArray(account.postLog) ? account.postLog.filter((ts) => Number(ts) >= windowStart) : [];
+  account.postLog = recentLog;
+
+  if (recentLog.length >= 2) {
+    if ((Number(account.balance) || 0) < 1000) {
+      return { ok: false, message: 'Ushbu post uchun yetarli balans yo\'q. Har bir qo\'shimcha post uchun 1000 UZS yechiladi.' };
+    }
+    account.balance = Number(account.balance || 0) - 1000;
+  }
+
+  account.postLog.push(now);
+  saveData();
+  return { ok: true };
+}
+
+async function rewardReferralIfEligible(ctx) {
+  const account = userData(ctx.from.id);
+  if (!account.referredBy) return;
+
+  const inviter = data.users[String(account.referredBy)];
+  if (!inviter || !inviter.referralRewarded) return;
+
+  if (Array.isArray(inviter.referralRewarded) && inviter.referralRewarded.includes(account.personalId)) return;
+
+  const channels = getRequiredChannels();
+  if (!channels.length) return;
+
+  let eligible = true;
+  for (const channel of channels) {
+    try {
+      const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
+      if (!['creator', 'administrator', 'member'].includes(member.status)) {
+        eligible = false;
+        break;
+      }
+    } catch (error) {
+      eligible = false;
+      break;
+    }
+  }
+
+  if (!eligible) return;
+
+  inviter.balance = Number(inviter.balance || 0) + 1000;
+  inviter.referrals ||= [];
+  if (!inviter.referrals.includes(String(account.personalId))) {
+    inviter.referrals.push(String(account.personalId));
+  }
+  inviter.referralRewarded ||= [];
+  inviter.referralRewarded.push(account.personalId);
+  saveData();
+}
+
 async function checkFullAdmin(ctx, username) {
   const chat = await ctx.telegram.getChat(username);
   if (chat.type !== 'channel') throw new Error('Bu username kanalga tegishli emas.');
@@ -466,12 +657,32 @@ bot.use(async (ctx, next) => {
   if (await requiredSubscription(ctx)) return next();
 });
 
-bot.start((ctx) => {
+bot.start(async (ctx) => {
   const account = userData(ctx.from.id);
+  account.username = ctx.from.username || '';
+  account.nickname = ctx.from.first_name || ctx.from.last_name || '';
+  if (!account.language) {
+    account.language = 'uz';
+  }
+
+  const payload = normalizeReferralPayload(ctx.startPayload || ctx.message?.text?.replace(/^\/start\s*/i, ''));
+  if (payload && payload.length >= 4 && !account.referredBy) {
+    const found = findUserByPersonalId(payload);
+    if (found && found.key !== String(ctx.from.id)) {
+      account.referredBy = found.key;
+      found.user.referrals ||= [];
+      if (!found.user.referrals.includes(String(account.personalId))) {
+        found.user.referrals.push(String(account.personalId));
+      }
+      if (!found.user.referralRewarded) found.user.referralRewarded = [];
+    }
+  }
+
   saveData();
   reset(ctx);
   if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
-  ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
+  await rewardReferralIfEligible(ctx);
+  return ctx.reply('Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', mainKeyboard(ctx));
 });
 
 bot.action(/^language:(uz|en|ru|ar|tr|zh|ko|tg)$/, async (ctx) => {
@@ -501,6 +712,19 @@ bot.hears(Object.values(text.addChannel), (ctx) => {
 
 bot.hears(Object.values(text.settings), (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard()));
 
+bot.hears('👤 Profilim', (ctx) => {
+  return ctx.reply(buildProfileText(ctx), mainKeyboard(ctx));
+});
+
+bot.hears('📣 Referal', (ctx) => {
+  return ctx.reply(buildReferralText(ctx), mainKeyboard(ctx));
+});
+
+bot.hears('📬 Adminga murojaat', (ctx) => {
+  ctx.session = { step: 'admin_request_message' };
+  return ctx.reply('Adminga yuboriladigan xabarni yozing:', mainKeyboard(ctx));
+});
+
 bot.hears(Object.values(text.admin), (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   return ctx.reply('🛠 Admin panel', adminKeyboard(ctx));
@@ -510,6 +734,13 @@ bot.action('check_subscription', async (ctx) => {
   await ctx.answerCbQuery();
   if (await requiredSubscription(ctx)) return;
   return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
+});
+
+bot.action('admin:user_search', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_user_search' };
+  return ctx.reply('Userning botdagi personal ID raqamini yuboring:', adminKeyboard(ctx));
 });
 
 bot.action('admin:stats', async (ctx) => {
@@ -764,6 +995,30 @@ bot.on('text', async (ctx) => {
     sessionState.pendingButtonUrl = trimmedText;
     sessionState.step = 'button_style';
     return ctx.reply('Tugma rangini tanlang:', buttonStyleKeyboard(ctx));
+  }
+
+  if (sessionState.step === 'admin_user_search') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const target = normalizePersonalId(trimmedText);
+    const found = findUserByPersonalId(target);
+    if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
+    const account = found.account;
+    const detail = `👤 User ma\'lumotlari\n\n` +
+      `Username: ${account.username || '—'}\n` +
+      `Nickname: ${account.nickname || '—'}\n` +
+      `Bot personal ID: ${account.personalId || '—'}\n` +
+      `Telegram ID: ${found.key}\n` +
+      `Balans: ${Number(account.balance || 0)} UZS\n` +
+      `Taklif qilganlar: ${Array.isArray(account.referrals) ? account.referrals.length : 0}\n` +
+      `Taklif qilgan dostlar IDlari: ${Array.isArray(account.referrals) ? account.referrals.join(', ') : '—'}`;
+    reset(ctx);
+    return ctx.reply(detail, adminKeyboard(ctx));
+  }
+
+  if (sessionState.step === 'admin_request_message') {
+    await sendAdminMessage(ctx, trimmedText);
+    reset(ctx);
+    return ctx.reply('✅ Murojaatingiz adminga yuborildi.', mainKeyboard(ctx));
   }
 
   return ctx.reply('Kerakli amalni pastki menyudan tanlang.', mainKeyboard(ctx));
