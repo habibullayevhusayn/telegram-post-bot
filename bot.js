@@ -602,7 +602,7 @@ async function chargeForPostIfNeeded(ctx) {
   const recentLog = Array.isArray(account.postLog) ? account.postLog.filter((ts) => Number(ts) >= windowStart) : [];
   account.postLog = recentLog;
   if (recentLog.length >= 3) {
-    return { ok: false, message: tr(ctx, 'premiumFreeHint') };
+    return { ok: false, message: `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}` };
   }
 
   account.postLog.push(now);
@@ -618,7 +618,7 @@ function buildPremiumText(ctx) {
   const status = Boolean(account.premium)
     ? `${text.premiumActive?.[lang] || 'Active'} ${text.premium?.[lang] || 'Premium'}`
     : `${text.premiumInactive?.[lang] || 'Inactive'} ${text.premium?.[lang] || 'Premium'}`;
-  return `💎 ${text.premium?.[lang] || 'Premium'}\n\n` +
+  return `<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> 💎 ${text.premium?.[lang] || 'Premium'}\n\n` +
     `${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
     `${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
     `${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}`;
@@ -990,7 +990,7 @@ bot.on('text', async (ctx) => {
       const channel = await checkFullAdmin(ctx, normalizeChannel(trimmedText));
       const account = userData(ctx.from.id);
       if (!account.premium && account.channels.length >= 1) {
-        return ctx.reply(tr(ctx, 'premiumFreeHint'), mainKeyboard(ctx));
+        return ctx.reply(`<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji> ${tr(ctx, 'premiumFreeHint')}`, mainKeyboard(ctx));
       }
       if (!account.channels.some((item) => item.id === channel.id)) account.channels.push(channel);
       saveData();
