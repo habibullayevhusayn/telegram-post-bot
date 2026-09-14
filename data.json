@@ -1,0 +1,37 @@
+{
+  "users": {
+    "7669387254": {
+      "channels": [
+        {
+          "id": -1003858481844,
+          "title": "Projects",
+          "username": "@projects_28"
+        },
+        {
+          "id": -1002301330093,
+          "title": "الإيمان",
+          "username": "@userisanAfk"
+        }
+      ],
+      "language": "uz"
+    },
+    "7764250982": {
+      "channels": []
+    },
+    "8920953955": {
+      "channels": [],
+      "language": null
+    }
+  },
+  "settings": {
+    "requiredChannel": {
+      "id": -1003858481844,
+      "title": "Projects",
+      "username": "@projects_28"
+    }
+  },
+  "stats": {
+    "postsSent": 1,
+    "broadcastsSent": 0
+  }
+}
