@@ -407,7 +407,12 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
+  const keyboard = [
+    [tr(ctx, 'settings'), tr(ctx, 'channels')],
+    [tr(ctx, 'addChannel')],
+    ['📊 Post statistikasi'],
+    ['👤 Profilim', '💎 Premium']
+  ];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -877,7 +882,6 @@ function buildPremiumText(ctx) {
 
 function premiumInlineKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('📊 Post statistikasi', 'premium:stats')],
     [Markup.button.callback("To'lov qildim ✅", 'premium_paid')]
   ]);
 }
@@ -1015,6 +1019,10 @@ bot.hears('👤 Profilim', (ctx) => {
 
 bot.hears('💎 Premium', (ctx) => {
   return ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard());
+});
+
+bot.hears('📊 Post statistikasi', (ctx) => {
+  return ctx.reply(premiumStatsText(ctx), mainKeyboard(ctx));
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
