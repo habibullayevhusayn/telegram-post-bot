@@ -1496,7 +1496,7 @@ bot.on('text', async (ctx) => {
     }
     sessionState.step = 'earning_withdraw_amount';
     sessionState.cardNumber = cardNumber;
-    return ctx.reply('💵 Qancha pul yechmoqchisiz? Summani so\'mda yuboring:');
+    return ctx.reply(' Qancha pul yechmoqchisiz? Summani so\'mda yuboring:');
   }
 
   if (sessionState.step === 'earning_withdraw_amount') {
