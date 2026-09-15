@@ -61,11 +61,12 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
+  process.exit(1);
 });
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { Telegraf, Markup, session } = require('telegraf');
 
 const token = process.env.BOT_TOKEN;
@@ -540,6 +541,7 @@ async function sendBroadcastToChat(ctx, chatId, post, replyMarkup) {
 
 async function broadcastPost(ctx, post) {
   const accounts = await User.find({}, { telegramId: 1, channels: 1 }).lean();
+  const requiredChannels = await getRequiredChannels();
   const userIds = new Set(accounts.map((account) => String(account.telegramId)));
   const channelIds = new Set();
 
@@ -549,7 +551,7 @@ async function broadcastPost(ctx, post) {
     }
   }
 
-  for (const channel of await getRequiredChannels()) {
+  for (const channel of requiredChannels) {
     if (channel?.id) channelIds.add(String(channel.id));
   }
 
@@ -557,44 +559,51 @@ async function broadcastPost(ctx, post) {
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
   let sent = 0;
 
-  for (const chatId of channelIds) {
-    try {
-      await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
-      sent += 1;
-    } catch (error) {
-      console.error(`Broadcast to channel ${chatId} failed:`, error.response?.description || error.message);
-    }
-  }
+  const channelResults = await runWithConcurrency([...channelIds], 5, async (chatId) => {
+    await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
+    return true;
+  });
+  sent += channelResults.filter((result) => result.status === 'fulfilled').length;
+  channelResults.filter((result) => result.status === 'rejected').forEach((result) => {
+    console.error('Broadcast to channel failed:', result.reason?.response?.description || result.reason?.message);
+  });
 
-  for (const chatId of userIds) {
-    try {
-      let canSend = true;
-      for (const required of await getRequiredChannels()) {
-        if (!required?.id) continue;
-        try {
-          const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
-          if (!['creator', 'administrator', 'member'].includes(member.status)) {
-            canSend = false;
-            break;
-          }
-        } catch (error) {
-          canSend = false;
-          break;
-        }
-      }
-
-      if (!canSend) continue;
-      await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
-      sent += 1;
-    } catch (error) {
-      console.error(`Broadcast to user ${chatId} failed:`, error.response?.description || error.message);
+  const userResults = await runWithConcurrency([...userIds], 5, async (chatId) => {
+    for (const required of requiredChannels) {
+      if (!required?.id) continue;
+      const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
+      if (!['creator', 'administrator', 'member'].includes(member.status)) return false;
     }
-  }
+    await sendBroadcastToChat(ctx, chatId, post, replyMarkup);
+    return true;
+  });
+  sent += userResults.filter((result) => result.status === 'fulfilled' && result.value).length;
+  userResults.filter((result) => result.status === 'rejected').forEach((result) => {
+    console.error('Broadcast to user failed:', result.reason?.response?.description || result.reason?.message);
+  });
 
   data.stats.broadcastsSent += 1;
   data.stats.postsSent += sent;
   await saveData();
   return sent;
+}
+
+async function runWithConcurrency(items, limit, task) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try {
+        results[index] = { status: 'fulfilled', value: await task(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 function channelKeyboard(ctx, channels) {
@@ -704,6 +713,35 @@ async function sendPreview(ctx) {
   return ctx.reply('👀 Preview tayyor. Yuborishni tasdiqlaysizmi?', confirmationKeyboard(ctx));
 }
 
+function downloadWithYtDlp(output, url) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('yt-dlp', [
+      '--no-playlist',
+      '--max-filesize', '100M',
+      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      '-o', output,
+      url
+    ], { windowsHide: true });
+    let errorOutput = '';
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error('yt-dlp timeout'));
+    }, 120000);
+    child.stderr?.on('data', (chunk) => {
+      errorOutput += chunk.toString();
+    });
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0 && fs.existsSync(output)) return resolve(output);
+      reject(new Error(errorOutput.trim() || `yt-dlp exited with code ${code}`));
+    });
+  });
+}
+
 async function sendMediaFromUrl(ctx, url) {
   const lower = String(url).trim().toLowerCase();
   const botAddress = getBotPublicLink();
@@ -712,12 +750,14 @@ async function sendMediaFromUrl(ctx, url) {
   try {
     if (/youtube\.com|youtu\.be|instagram\.com|instagr\.am|tiktok\.com|x\.com|twitter\.com|fb\.com|facebook\.com|vk\.com|vimeo\.com/.test(lower)) {
       const output = path.join(__dirname, 'tmp-media', `media-${Date.now()}.mp4`);
-      const ytdlp = spawnSync('yt-dlp', ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '-o', output, url], { encoding: 'utf8' });
-      if (ytdlp.status !== 0 || !fs.existsSync(output)) {
-        return ctx.reply('Ushbu URL dan video olib bo\'lmadi. To\'g\'ri public video yoki media URL yuboring.', mainKeyboard(ctx));
+      await fs.promises.mkdir(path.dirname(output), { recursive: true });
+      await downloadWithYtDlp(output, url);
+      try {
+        await ctx.telegram.sendVideo(ctx.chat.id, { source: fs.createReadStream(output), filename: 'media.mp4' }, { caption: footer, supports_streaming: true });
+        return ctx.reply('✅ Video yuborildi.', mainKeyboard(ctx));
+      } finally {
+        await fs.promises.unlink(output).catch(() => {});
       }
-      await ctx.telegram.sendVideo(ctx.chat.id, { source: fs.createReadStream(output), filename: 'media.mp4' }, { caption: footer, supports_streaming: true });
-      return ctx.reply('✅ Video yuborildi.', mainKeyboard(ctx));
     }
 
     if (/\.(mp4|mov|m4v|webm|ogg|avi)(\?|$)/.test(lower)) {
@@ -1185,12 +1225,6 @@ bot.action('admin:subscription_off', async (ctx) => {
   );
   saveData();
   return ctx.reply('✅ Majburiy obuna o\'chirildi.', adminKeyboard(ctx));
-});
-
-bot.action('admin:required_list', async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  return ctx.reply(await formatRequiredChannelList(), adminKeyboard(ctx));
 });
 
 bot.action('admin:premium_settings', async (ctx) => {
