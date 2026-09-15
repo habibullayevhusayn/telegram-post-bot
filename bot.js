@@ -1411,7 +1411,11 @@ bot.action(/^button_color:(blue|green|red)$/, async (ctx) => {
   if (!sessionState.post || !sessionState.pendingButtonText || !sessionState.pendingButtonUrl) {
     return ctx.reply('Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.');
   }
-  sessionState.pendingButtonColor = ctx.match[1];
+  sessionState.pendingButtonColor = {
+    blue: 'primary',
+    green: 'success',
+    red: 'danger'
+  }[ctx.match[1]];
   return ctx.reply('Tugma qatorini tanlang:', buttonPlacementKeyboard(ctx));
 });
 
@@ -1423,14 +1427,10 @@ bot.action(/^button_place:(new|same)$/, async (ctx) => {
   }
 
   sessionState.post.buttons ||= [];
-  const colorMarker = {
-    blue: '🔵',
-    green: '🟢',
-    red: '🔴'
-  }[sessionState.pendingButtonColor];
   const button = {
-    text: `${colorMarker} ${sessionState.pendingButtonText}`,
-    url: sessionState.pendingButtonUrl
+    text: sessionState.pendingButtonText,
+    url: sessionState.pendingButtonUrl,
+    style: sessionState.pendingButtonColor
   };
   if (ctx.match[1] === 'same' && sessionState.post.buttons.length) {
     sessionState.post.buttons.at(-1).push(button);
