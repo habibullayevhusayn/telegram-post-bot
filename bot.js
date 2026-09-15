@@ -884,52 +884,6 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
 });
 
 bot.action('premium_paid', async (ctx) => {
-
-  bot.action('earning:captcha', async (ctx) => {
-    await ctx.answerCbQuery();
-    const captcha = createCaptcha();
-    ctx.session = { step: 'earning_captcha', captchaAnswer: captcha.answer };
-    return ctx.reply(`🧩 Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
-      [Markup.button.callback('❌ Bekor qilish', 'cancel')]
-    ]));
-  });
-
-  bot.action('earning:balance', async (ctx) => {
-    await ctx.answerCbQuery();
-    const account = userData(ctx.from.id);
-    const buttons = [[Markup.button.callback('💸 Pul yechib olish', 'earning:withdraw')], [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')]];
-    return ctx.reply(balanceText(ctx), Markup.inlineKeyboard(buttons));
-  });
-
-  bot.action('earning:withdraw', async (ctx) => {
-    await ctx.answerCbQuery();
-    const account = userData(ctx.from.id);
-    const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-    if (account.pendingWithdrawal) return ctx.reply('⏳ Sizda ko\'rib chiqilayotgan pul yechish so\'rovi bor.', earningKeyboard());
-    if (account.balance < minimum) return ctx.reply(`❌ Pul yechish uchun kamida ${minimum} so'm bo\'lishi kerak.`, earningKeyboard());
-    ctx.session = { step: 'earning_withdraw_card' };
-    return ctx.reply('💳 Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):');
-  });
-
-  bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
-    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-    const request = data.withdrawals.find((item) => String(item.id) === ctx.match[2]);
-    if (!request || request.status !== 'pending') return ctx.reply('Bu so\'rov allaqachon ko\'rib chiqilgan.', adminKeyboard(ctx));
-    const account = userData(request.userId);
-    request.status = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
-    account.pendingWithdrawal = null;
-    if (request.status === 'rejected') account.balance += request.amount;
-    saveData();
-    try {
-      await bot.telegram.sendMessage(request.userId, request.status === 'approved'
-        ? `✅ Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
-        : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`);
-    } catch (error) {
-      console.error('Withdrawal status notification failed:', error.response?.description || error.message);
-    }
-    return ctx.reply(`✅ So'rov ${request.status === 'approved' ? 'tasdiqlandi' : 'rad etildi'}.`, adminKeyboard(ctx));
-  });
   await ctx.answerCbQuery();
   const account = userData(ctx.from.id);
   if (account.premium) {
@@ -937,6 +891,51 @@ bot.action('premium_paid', async (ctx) => {
   }
   ctx.session = { step: 'premium_payment_photo', buyer: ctx.from.id };
   return ctx.reply(`<tg-emoji emoji-id="5422679296789455210">🇺🇿</tg-emoji> To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.`, mainKeyboard(ctx));
+});
+
+bot.action('earning:captcha', async (ctx) => {
+  await ctx.answerCbQuery();
+  const captcha = createCaptcha();
+  ctx.session = { step: 'earning_captcha', captchaAnswer: captcha.answer };
+  return ctx.reply(`🧩 Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
+    [Markup.button.callback('❌ Bekor qilish', 'cancel')]
+  ]));
+});
+
+bot.action('earning:balance', async (ctx) => {
+  await ctx.answerCbQuery();
+  const buttons = [[Markup.button.callback('💸 Pul yechib olish', 'earning:withdraw')], [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')]];
+  return ctx.reply(balanceText(ctx), Markup.inlineKeyboard(buttons));
+});
+
+bot.action('earning:withdraw', async (ctx) => {
+  await ctx.answerCbQuery();
+  const account = userData(ctx.from.id);
+  const minimum = Number(data.settings.minimumWithdrawal) || 10000;
+  if (account.pendingWithdrawal) return ctx.reply("⏳ Sizda ko'rib chiqilayotgan pul yechish so'rovi bor.", earningKeyboard());
+  if (account.balance < minimum) return ctx.reply(`❌ Pul yechish uchun kamida ${minimum} so'm bo'lishi kerak.`, earningKeyboard());
+  ctx.session = { step: 'earning_withdraw_card' };
+  return ctx.reply('💳 Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):');
+});
+
+bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply("Ruxsat yo'q.");
+  const request = data.withdrawals.find((item) => String(item.id) === ctx.match[2]);
+  if (!request || request.status !== 'pending') return ctx.reply("Bu so'rov allaqachon ko'rib chiqilgan.", adminKeyboard(ctx));
+  const account = userData(request.userId);
+  request.status = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
+  account.pendingWithdrawal = null;
+  if (request.status === 'rejected') account.balance += request.amount;
+  saveData();
+  try {
+    await bot.telegram.sendMessage(request.userId, request.status === 'approved'
+      ? `✅ Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
+      : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`);
+  } catch (error) {
+    console.error('Withdrawal status notification failed:', error.response?.description || error.message);
+  }
+  return ctx.reply(`✅ So'rov ${request.status === 'approved' ? 'tasdiqlandi' : 'rad etildi'}.`, adminKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
