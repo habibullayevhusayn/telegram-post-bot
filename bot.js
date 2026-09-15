@@ -13,7 +13,6 @@ const mongoConnection = mongoose.connect(mongoUri, {
 const userSchema = new mongoose.Schema({
   telegramId: { type: Number, unique: true, required: true, index: true },
   username: { type: String, default: '' },
-  balance: { type: Number, default: 0 },
   referredBy: { type: Number, default: null },
   joinedAt: { type: Date, default: Date.now },
   personalId: { type: Number },
@@ -22,10 +21,11 @@ const userSchema = new mongoose.Schema({
   channels: { type: Array, default: [] },
   premium: { type: Boolean, default: false },
   postLog: { type: Array, default: [] },
+  templates: { type: Array, default: [] },
+  publishedPosts: { type: Number, default: 0 },
+  publishedChannels: { type: Number, default: 0 },
+  lastPublishedAt: { type: Date, default: null },
   profileSeen: { type: Boolean, default: false },
-  captchaSolved: { type: Number, default: 0 },
-  totalWithdrawn: { type: Number, default: 0 },
-  pendingWithdrawal: { type: mongoose.Schema.Types.Mixed, default: null }
 }, { versionKey: false });
 
 const botConfigSchema = new mongoose.Schema({
@@ -34,7 +34,6 @@ const botConfigSchema = new mongoose.Schema({
   maintenanceMode: { type: Boolean, default: false },
   settings: { type: mongoose.Schema.Types.Mixed, default: {} },
   stats: { type: mongoose.Schema.Types.Mixed, default: {} },
-  withdrawals: { type: Array, default: [] }
 }, { versionKey: false });
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);
@@ -72,70 +71,14 @@ if (!token) {
   throw new Error('BOT_TOKEN is missing. Copy .env.example to .env and add the token.');
 }
 
-function earningKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')],
-    [Markup.button.callback('💰 Balans', 'earning:balance')]
-  ]);
-}
-
-function withdrawalKeyboard(requestId) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('✅ To\'landi', `admin:withdrawal_approve:${requestId}`)],
-    [Markup.button.callback('❌ Rad etish', `admin:withdrawal_reject:${requestId}`)]
-  ]);
-}
-
-function earningText(ctx) {
-  const reward = Number(data.settings.captchaReward) || 1000;
-  const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-  return `${EARNING_EMOJI_TAG} Pul ishlash\n\nHar bir captcha uchun ${reward} so'm olasiz.\nMinimal yechib olish: ${minimum} so'm`;
-}
-
-function balanceText(ctx) {
-  const account = userData(ctx.from.id);
-  return `${BALANCE_EMOJI_TAG} Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Joriy balans: ${account.balance} so'm\n💸 Jami to'langan: ${account.totalWithdrawn} so'm`;
-}
-
-function createCaptcha() {
-  const first = Math.floor(Math.random() * 20) + 1;
-  const second = Math.floor(Math.random() * 20) + 1;
-  return { question: `${first} + ${second} = ?`, answer: first + second };
-}
-
-function withdrawalRequestText(request, account) {
-  return `💸 Pul yechish so'rovi\n\n` +
-    `Foydalanuvchi: ${account.username || account.nickname || request.userId}\n` +
-    `Telegram ID: ${request.userId}\n` +
-    `Bot personal ID: ${account.personalId || '—'}\n` +
-    `Karta: ${request.cardNumber}\n` +
-    `Summa: ${request.amount} so'm\n` +
-    `Captcha: ${account.captchaSolved} ta\n` +
-    `So'rov ID: ${request.id}`;
-}
-
 const bot = new Telegraf(token);
 const PREMIUM_EMOJI_TAG = '<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>';
-const CAPTCHA_EMOJI_TAG = '<tg-emoji emoji-id="5395820027314215806">🧩</tg-emoji>';
-const EARNING_EMOJI_TAG = '<tg-emoji emoji-id="5363941998359237276">💸</tg-emoji>';
-const BALANCE_EMOJI_TAG = '<tg-emoji emoji-id="5224257782013769471">💰</tg-emoji>';
-const CARD_EMOJI_TAG = '<tg-emoji emoji-id="5213403875670765022">💳</tg-emoji>';
 const CANCEL_EMOJI_TAG = '<tg-emoji emoji-id="5199785165735367039">⚡️</tg-emoji>';
-const CAPTCHA_ANSWER_EMOJI_TAG = '<tg-emoji emoji-id="5274182275704039686">⚡</tg-emoji>';
-const WITHDRAWAL_SENT_EMOJI_TAG = '<tg-emoji emoji-id="5416028557111474714">⚡️</tg-emoji>';
-const WITHDRAWAL_APPROVED_EMOJI_TAG = '<tg-emoji emoji-id="5307513983584973446">⚡️</tg-emoji>';
 
 function prefixPremiumEmojiIfMissing(text) {
   if (typeof text !== 'string') return text;
   if (/<tg-emoji\s+emoji-id=\"[^"]+\">[\s\S]*?<\/tg-emoji>/.test(text)) return text;
   return `${PREMIUM_EMOJI_TAG} ${text}`;
-}
-
-function isEarningContext(ctx) {
-  const callbackData = ctx.callbackQuery?.data || '';
-  const step = ctx.session?.step || '';
-  return callbackData.startsWith('earning:') || callbackData.startsWith('admin:withdrawal_') ||
-    step.startsWith('earning_') || ctx.message?.text === '💰 Pul ishlash';
 }
 
 const originalSendMessage = bot.telegram.sendMessage.bind(bot.telegram);
@@ -164,15 +107,12 @@ const localDataPath = path.join(__dirname, 'data.json');
 const renderDiskDataPath = '/opt/render/project/src/data/data.json';
 const legacyDataPath = fs.existsSync(renderDiskDataPath) ? renderDiskDataPath : localDataPath;
 const legacyData = fs.existsSync(legacyDataPath) ? JSON.parse(fs.readFileSync(legacyDataPath, 'utf8')) : { users: {} };
-const data = { users: {}, settings: {}, stats: {}, withdrawals: [] };
+const data = { users: {}, settings: {}, stats: {} };
 data.users ||= {};
 data.settings ||= {};
 data.settings.requiredChannels ||= [];
 data.settings.premiumCardNumber ||= '9860 0803 9258 5933';
 data.settings.premiumPrice ||= 10000;
-data.settings.captchaReward ||= 1000;
-data.settings.minimumWithdrawal ||= 10000;
-data.withdrawals ||= [];
 if (data.settings.requiredChannel && !Array.isArray(data.settings.requiredChannels)) {
   data.settings.requiredChannels = [data.settings.requiredChannel];
 }
@@ -201,7 +141,6 @@ const text = {
   telegramId: { uz: 'Telegram ID', en: 'Telegram ID', ru: 'Telegram ID', ar: 'معرف تلغрам', tr: 'Telegram ID', zh: 'Telegram ID', ko: '텔레그램 ID', tg: 'ID-и Телеграм' },
   username: { uz: 'Username', en: 'Username', ru: 'Username', ar: 'اسم المستخدم', tr: 'Kullanıcı adı', zh: '用户名', ko: '사용자 이름', tg: 'Номи корбар' },
   nickname: { uz: 'Nickname', en: 'Nickname', ru: 'Nickname', ar: 'اسم المستعار', tr: 'Takma ad', zh: '昵称', ko: '닉네임', tg: 'Никнейм' },
-  balance: { uz: 'Balans', en: 'Balance', ru: 'Баланс', ar: 'الرصيد', tr: 'Bakiye', zh: '余额', ko: '잔액', tg: 'Баланс' }
 };
 const replyTranslations = {
   en: {
@@ -300,8 +239,6 @@ function localizeReply(ctx, message) {
 data.settings.requiredChannels ||= [];
 data.settings.premiumCardNumber ||=  '9860 0803 9258 5933';
 data.settings.premiumPrice ||= 10000;
-data.settings.captchaReward ||= 1000;
-data.settings.minimumWithdrawal ||= 10000;
 data.stats = { postsSent: 0, broadcastsSent: 0 };
 
 let mongoWriteQueue = Promise.resolve();
@@ -321,7 +258,6 @@ function saveData() {
         channels: data.settings.requiredChannels || [],
         settings: data.settings,
         stats: data.stats,
-        withdrawals: data.withdrawals
       }
     }, { upsert: true });
   }).catch((error) => {
@@ -363,7 +299,6 @@ async function hydrateFromMongo() {
       channels: legacySettings.requiredChannels || [],
       settings: legacySettings,
       stats: legacyData.stats || { postsSent: 0, broadcastsSent: 0 },
-      withdrawals: legacyData.withdrawals || []
     });
     config = config.toObject();
   }
@@ -373,12 +308,9 @@ async function hydrateFromMongo() {
   data.settings = { ...data.settings, ...(config.settings || {}) };
   data.settings.requiredChannels = config.channels?.length ? config.channels : (data.settings.requiredChannels || []);
   data.stats = { ...data.stats, ...(config.stats || {}) };
-  data.withdrawals = config.withdrawals || [];
   data.settings.requiredChannels ||= [];
   data.settings.premiumCardNumber ||= '9860 0803 9258 5933';
   data.settings.premiumPrice ||= 10000;
-  data.settings.captchaReward ||= 1000;
-  data.settings.minimumWithdrawal ||= 10000;
 }
 
 function userData(userId) {
@@ -397,11 +329,11 @@ function userData(userId) {
       nickname: '',
       premium: false,
       postLog: [],
-      profileSeen: false,
-      captchaSolved: 0,
-      balance: 0,
-      totalWithdrawn: 0,
-      pendingWithdrawal: null
+      templates: [],
+      publishedPosts: 0,
+      publishedChannels: 0,
+      lastPublishedAt: null,
+      profileSeen: false
     };
   }
 
@@ -409,11 +341,11 @@ function userData(userId) {
   data.users[key].language ||= null;
   data.users[key].premium ??= false;
   data.users[key].postLog ||= [];
+  data.users[key].templates ||= [];
+  data.users[key].publishedPosts ||= 0;
+  data.users[key].publishedChannels ||= 0;
+  data.users[key].lastPublishedAt ||= null;
   data.users[key].profileSeen ??= false;
-  data.users[key].captchaSolved ||= 0;
-  data.users[key].balance ||= 0;
-  data.users[key].totalWithdrawn ||= 0;
-  data.users[key].pendingWithdrawal ||= null;
 
   if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
     const usedIds = Object.values(data.users || {})
@@ -445,7 +377,6 @@ async function ensureUserInMongo(ctx, includeReferral = false) {
       telegramId,
       joinedAt: new Date(),
       referredBy,
-      balance: 0
     }
   };
   const document = await User.findOneAndUpdate({ telegramId }, update, {
@@ -476,7 +407,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], ['💰 Pul ishlash'], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -489,7 +420,6 @@ function adminKeyboard(ctx) {
     ],
     [
       Markup.button.callback('💳 Premium to\'lov sozlamalari', 'admin:premium_settings'),
-      Markup.button.callback('💰 Pul ishlash sozlamalari', 'admin:earning_settings')
     ],
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
@@ -574,18 +504,7 @@ async function formatRequiredChannelList() {
 }
 
 async function sendBroadcastToChat(ctx, chatId, post, replyMarkup) {
-  if (post.photo) {
-    await ctx.telegram.sendPhoto(chatId, post.photo, {
-      caption: post.caption || undefined,
-      caption_entities: post.caption ? post.captionEntities : undefined,
-      reply_markup: replyMarkup
-    });
-  } else {
-    await ctx.telegram.sendMessage(chatId, post.caption || ' ', {
-      reply_markup: replyMarkup,
-      entities: post.captionEntities || undefined
-    });
-  }
+  await sendPostToChat(ctx, chatId, post, replyMarkup);
 }
 
 async function broadcastPost(ctx, post) {
@@ -650,7 +569,20 @@ async function broadcastPost(ctx, post) {
 function channelKeyboard(ctx, channels) {
   return Markup.inlineKeyboard([
     ...channels.map((channel) => [Markup.button.callback(`📢 ${channel.title}`, `channel:${channel.id}`)]),
+    [Markup.button.callback('📢 Bir nechta kanalga yuborish', 'compose_multi')],
     [Markup.button.callback(localizeReply(ctx, '➕ Kanal qo\'shish'), 'add_channel')]
+  ]);
+}
+
+function multiChannelKeyboard(ctx, channels, selectedIds = []) {
+  const selected = new Set(selectedIds.map((id) => String(id)));
+  return Markup.inlineKeyboard([
+    ...channels.map((channel) => [Markup.button.callback(
+      `${selected.has(String(channel.id)) ? '✅' : '⬜'} ${channel.title}`,
+      `multi_channel:${channel.id}`
+    )]),
+    [Markup.button.callback('✅ Kanallarni tasdiqlash', 'multi_channels_done')],
+    [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
   ]);
 }
 
@@ -665,8 +597,17 @@ function channelActions(ctx, channelId) {
 function composerKeyboard(ctx) {
   return Markup.inlineKeyboard([
     [Markup.button.callback(localizeReply(ctx, '🔗 Havolali tugma qo\'shish'), 'add_button')],
+    [Markup.button.callback('💾 Shablon sifatida saqlash', 'save_template')],
+    [Markup.button.callback('📂 Shablonlarim', 'templates')],
     [Markup.button.callback(localizeReply(ctx, '👀 Preview'), 'preview')],
     [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
+  ]);
+}
+
+function templateKeyboard(templates) {
+  return Markup.inlineKeyboard([
+    ...templates.map((template) => [Markup.button.callback(`📄 ${template.name}`, `template:${template.id}`)]),
+    [Markup.button.callback('⬅️ Postga qaytish', 'templates_back')]
   ]);
 }
 
@@ -681,24 +622,54 @@ function postButtons(post) {
   return post.buttons || [];
 }
 
+function postHasContent(post) {
+  return Boolean(post?.photo || post?.media || post?.caption);
+}
+
+async function sendPostToChat(ctx, chatId, post, replyMarkup) {
+  const common = { reply_markup: replyMarkup };
+  if (post.photo || post.mediaType === 'photo') {
+    return ctx.telegram.sendPhoto(chatId, post.photo || post.media, {
+      ...common,
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined
+    });
+  }
+  if (post.mediaType === 'video') {
+    return ctx.telegram.sendVideo(chatId, post.media, {
+      ...common,
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined,
+      supports_streaming: true
+    });
+  }
+  if (post.mediaType === 'animation') {
+    return ctx.telegram.sendAnimation(chatId, post.media, {
+      ...common,
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined
+    });
+  }
+  if (post.mediaType === 'document') {
+    return ctx.telegram.sendDocument(chatId, post.media, {
+      ...common,
+      caption: post.caption || undefined,
+      caption_entities: post.caption ? post.captionEntities : undefined
+    });
+  }
+  return ctx.telegram.sendMessage(chatId, post.caption || ' ', {
+    ...common,
+    entities: post.captionEntities || undefined
+  });
+}
+
 async function sendPreview(ctx) {
   const { post } = ctx.session;
-  if (!post?.photo && !post?.caption) return ctx.reply('Post ma\'lumotlari topilmadi.');
+  if (!postHasContent(post)) return ctx.reply('Post ma\'lumotlari topilmadi.');
   ctx.session.previewButtons = postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(ctx.session.previewButtons).reply_markup;
   ctx.session.step = 'confirm';
-  if (post.photo) {
-    await ctx.telegram.sendPhoto(ctx.from.id, post.photo, {
-      caption: post.caption || undefined,
-      caption_entities: post.caption ? post.captionEntities : undefined,
-      reply_markup: replyMarkup
-    });
-  } else {
-    await ctx.telegram.sendMessage(ctx.from.id, post.caption, {
-      entities: post.captionEntities || [],
-      reply_markup: replyMarkup
-    });
-  }
+  await sendPostToChat(ctx, ctx.from.id, post, replyMarkup);
   return ctx.reply('👀 Preview tayyor. Yuborishni tasdiqlaysizmi?', confirmationKeyboard(ctx));
 }
 
@@ -737,9 +708,8 @@ async function sendMediaFromUrl(ctx, url) {
 
 function buttonStyleKeyboard(ctx) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback(localizeReply(ctx, '🔵 Ko\'k'), 'button_style:primary')],
-    [Markup.button.callback(localizeReply(ctx, '🟢 Yashil'), 'button_style:success')],
-    [Markup.button.callback(localizeReply(ctx, '🔴 Qizil'), 'button_style:danger')],
+    [Markup.button.callback('➕ Yangi qatorga qo\'shish', 'button_place:new')],
+    [Markup.button.callback('↔️ Shu qatorga qo\'shish', 'button_place:same')],
     [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
   ]);
 }
@@ -886,6 +856,11 @@ function buildPremiumText(ctx) {
     `<tg-emoji emoji-id="5370784581341422520">⭐️</tg-emoji> ${text.premiumStatus?.[lang] || 'Premium status'}: ${status}\n` +
     `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeaturePost?.[lang] || 'Unlimited posts'}\n` +
     `<tg-emoji emoji-id="5366082700253870225">♾️</tg-emoji> ${text.premiumFeatureChannel?.[lang] || 'Unlimited channels'}\n\n` +
+    `📢 Bir postni bir nechta kanalga yuborish\n` +
+    `📂 Post shablonlarini saqlash\n` +
+    `🔘 Tugmalarni bir qatorga joylash\n` +
+    `📊 Post statistikasi\n` +
+    `🎞 Video, GIF va hujjat postlari\n\n` +
     `<tg-emoji emoji-id="5267300544094948794">💳</tg-emoji> To'lov kartasi: <code>${cardNumber}</code>\n` +
     `<tg-emoji emoji-id="5393290141253004429">🏧</tg-emoji> Humo plastik karta, ${price} so'm\n\n` +
     `<tg-emoji emoji-id="5373265917092316632">📱</tg-emoji> To'lovni amalga oshirgandan keyin quyidagi tugmani bosing:`;
@@ -893,8 +868,22 @@ function buildPremiumText(ctx) {
 
 function premiumInlineKeyboard() {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('📊 Post statistikasi', 'premium:stats')],
     [Markup.button.callback("To'lov qildim ✅", 'premium_paid')]
   ]);
+}
+
+function premiumStatsText(ctx) {
+  const account = userData(ctx.from.id);
+  if (!account.premium) return 'Post statistikasi Premium foydalanuvchilar uchun mavjud.';
+  const lastPublished = account.lastPublishedAt
+    ? new Date(account.lastPublishedAt).toLocaleString('uz-UZ')
+    : 'Hali post yuborilmagan';
+  return `📊 Post statistikasi\n\n` +
+    `Yuborilgan postlar: ${account.publishedPosts || 0} ta\n` +
+    `Kanallarga yuborilgan nusxalar: ${account.publishedChannels || 0} ta\n` +
+    `Saqlangan shablonlar: ${account.templates?.length || 0} ta\n` +
+    `Oxirgi post: ${lastPublished}`;
 }
 
 async function checkFullAdmin(ctx, username) {
@@ -954,7 +943,7 @@ bot.use(async (ctx, next) => {
   const originalReply = ctx.reply.bind(ctx);
   ctx.reply = (message, ...args) => {
     const localized = localizeReply(ctx, message);
-    const enriched = isEarningContext(ctx) ? localized : prefixPremiumEmojiIfMissing(localized);
+      const enriched = prefixPremiumEmojiIfMissing(localized);
     if (enriched.includes('<tg-emoji')) {
       if (args.length === 0) return originalReply(enriched, { parse_mode: 'HTML' });
       const firstArg = args[0];
@@ -989,6 +978,11 @@ bot.command('settings', (ctx) => ctx.reply(tr(ctx, 'welcome'), languageKeyboard(
 bot.command('profile', (ctx) => ctx.reply(buildProfileText(ctx), mainKeyboard(ctx)));
 bot.command('premium', (ctx) => ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard()));
 
+bot.action('premium:stats', async (ctx) => {
+  await ctx.answerCbQuery();
+  return ctx.reply(premiumStatsText(ctx), premiumInlineKeyboard());
+});
+
 bot.command('channels', showChannels);
 
 // --- ESKI MA'LUMOTLARNI YUKLAB OLISH BUYRUG'I --
@@ -1012,10 +1006,6 @@ bot.hears('👤 Profilim', (ctx) => {
 
 bot.hears('💎 Premium', (ctx) => {
   return ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard());
-});
-
-bot.hears('💰 Pul ishlash', (ctx) => {
-  return ctx.reply(earningText(ctx), earningKeyboard());
 });
 
 bot.hears(Object.values(text.admin), (ctx) => {
@@ -1057,61 +1047,6 @@ bot.action('premium_paid', async (ctx) => {
   }
   ctx.session = { step: 'premium_payment_photo', buyer: ctx.from.id };
   return ctx.reply(`<tg-emoji emoji-id="5422679296789455210">🇺🇿</tg-emoji> To\'lov chekingizni (rasm) yuboring. Admin tekshiruv uchun yetib keladi.`, mainKeyboard(ctx));
-});
-
-bot.action('earning:captcha', async (ctx) => {
-  await ctx.answerCbQuery();
-  const captcha = createCaptcha();
-  ctx.session = { step: 'earning_captcha', captchaAnswer: captcha.answer };
-  return ctx.reply(`${CAPTCHA_EMOJI_TAG} Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
-    [Markup.button.callback('❌ Bekor qilish', 'cancel')]
-  ]));
-});
-
-bot.action('earning:balance', async (ctx) => {
-  await ctx.answerCbQuery();
-  const buttons = [[Markup.button.callback('💸 Pul yechib olish', 'earning:withdraw')], [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')]];
-  return ctx.reply(balanceText(ctx), Markup.inlineKeyboard(buttons));
-});
-
-bot.action('earning:withdraw', async (ctx) => {
-  await ctx.answerCbQuery();
-  const account = userData(ctx.from.id);
-  const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-  if (account.pendingWithdrawal) return ctx.reply("⏳ Sizda ko'rib chiqilayotgan pul yechish so'rovi bor.", earningKeyboard());
-  if (account.balance < minimum) return ctx.reply(`❌ Pul yechish uchun kamida ${minimum} so'm bo'lishi kerak.`, earningKeyboard());
-  ctx.session = { step: 'earning_withdraw_card' };
-  return ctx.reply(`${CARD_EMOJI_TAG} Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):`);
-});
-
-bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply("Ruxsat yo'q.");
-  const request = data.withdrawals.find((item) => String(item.id) === ctx.match[2]);
-  if (!request || request.status !== 'pending') return ctx.reply("Bu so'rov allaqachon ko'rib chiqilgan.", adminKeyboard(ctx));
-  const account = userData(request.userId);
-  const requestedStatus = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
-  const update = requestedStatus === 'rejected'
-    ? { $set: { pendingWithdrawal: null }, $inc: { balance: request.amount } }
-    : { $set: { pendingWithdrawal: null }, $inc: { totalWithdrawn: request.amount } };
-  const updatedAccount = await User.findOneAndUpdate(
-    { telegramId: request.userId, pendingWithdrawal: request.id },
-    update,
-    { new: true }
-  ).lean();
-  if (!updatedAccount) return ctx.reply('Bu so\'rov allaqachon ko\'rib chiqilgan.', adminKeyboard(ctx));
-  request.status = requestedStatus;
-  data.users[String(request.userId)] = accountFromMongo(updatedAccount);
-  saveData();
-  try {
-    await originalSendMessage(request.userId, request.status === 'approved'
-      ? `${WITHDRAWAL_APPROVED_EMOJI_TAG} Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
-      : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`,
-    request.status === 'approved' ? { parse_mode: 'HTML' } : undefined);
-  } catch (error) {
-    console.error('Withdrawal status notification failed:', error.response?.description || error.message);
-  }
-  return ctx.reply(`✅ So'rov ${request.status === 'approved' ? 'tasdiqlandi' : 'rad etildi'}.`, adminKeyboard(ctx));
 });
 
 bot.action(/^admin:premium_approve:(\d+)$/, async (ctx) => {
@@ -1239,30 +1174,6 @@ bot.action('admin:premium_price_edit', async (ctx) => {
   return ctx.reply(`Yangi premium narxini yuboring (hozirgi: ${Number(data.settings?.premiumPrice || 10000)} so'm)`, adminKeyboard(ctx));
 });
 
-bot.action('admin:earning_settings', async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  return ctx.reply(`💰 Pul ishlash sozlamalari\n\nCaptcha mukofoti: ${data.settings.captchaReward} so'm\nMinimal yechib olish: ${data.settings.minimumWithdrawal} so'm`, Markup.inlineKeyboard([
-    [Markup.button.callback('💵 Captcha summasini o\'zgartirish', 'admin:captcha_reward_edit')],
-    [Markup.button.callback('📉 Minimal summani o\'zgartirish', 'admin:minimum_withdrawal_edit')],
-    [Markup.button.callback('⬅️ Orqaga', 'admin:back')]
-  ]));
-});
-
-bot.action('admin:captcha_reward_edit', async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  ctx.session = { step: 'admin_captcha_reward_edit' };
-  return ctx.reply(`Yangi captcha summasini yuboring (hozirgi: ${data.settings.captchaReward} so'm):`, adminKeyboard(ctx));
-});
-
-bot.action('admin:minimum_withdrawal_edit', async (ctx) => {
-  await ctx.answerCbQuery();
-  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  ctx.session = { step: 'admin_minimum_withdrawal_edit' };
-  return ctx.reply(`Yangi minimal yechib olish summasini yuboring (hozirgi: ${data.settings.minimumWithdrawal} so'm):`, adminKeyboard(ctx));
-});
-
 bot.action('admin:back', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
@@ -1274,7 +1185,7 @@ bot.action('admin:broadcast', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   ctx.session = { step: 'broadcast_photo', post: { buttons: [] }, broadcast: true };
-  return ctx.reply('Broadcast uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
+  return ctx.reply('Broadcast uchun rasm, video, GIF yoki hujjat yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
     [Markup.button.callback('Rasmsiz', 'broadcast_no_photo')],
     [Markup.button.callback('Bekor qilish', 'cancel')]
   ]));
@@ -1296,6 +1207,40 @@ bot.action('add_channel', async (ctx) => {
   await ctx.answerCbQuery();
   ctx.session = { step: 'channel' };
   return ctx.reply('Kanal username sini yuboring, masalan: @my_channel');
+});
+
+bot.action('compose_multi', async (ctx) => {
+  await ctx.answerCbQuery();
+  const account = userData(ctx.from.id);
+  if (!account.premium) return ctx.reply('Bu funksiya Premium foydalanuvchilar uchun mavjud.', mainKeyboard(ctx));
+  if (account.channels.length < 2) return ctx.reply('Bir nechta kanalga yuborish uchun kamida 2 ta kanal qo\'shing.', mainKeyboard(ctx));
+  ctx.session = { step: 'multi_channel_select', selectedChannels: [] };
+  return ctx.reply('Post yuboriladigan kanallarni tanlang:', multiChannelKeyboard(ctx, account.channels));
+});
+
+bot.action(/^multi_channel:(-?\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!ctx.session || ctx.session.step !== 'multi_channel_select') return ctx.reply('Post yaratishni qaytadan boshlang.');
+  const account = userData(ctx.from.id);
+  const channel = account.channels.find((item) => String(item.id) === ctx.match[1]);
+  if (!channel) return ctx.reply('Kanal topilmadi.');
+  const selected = new Set((ctx.session.selectedChannels || []).map((id) => String(id)));
+  if (selected.has(String(channel.id))) selected.delete(String(channel.id));
+  else selected.add(String(channel.id));
+  ctx.session.selectedChannels = [...selected];
+  return ctx.editMessageReplyMarkup(multiChannelKeyboard(ctx, account.channels, ctx.session.selectedChannels).reply_markup);
+});
+
+bot.action('multi_channels_done', async (ctx) => {
+  await ctx.answerCbQuery();
+  const selectedIds = ctx.session?.selectedChannels || [];
+  if (!selectedIds.length) return ctx.reply('Kamida bitta kanalni tanlang.');
+  const channels = userData(ctx.from.id).channels.filter((channel) => selectedIds.includes(String(channel.id)));
+  ctx.session = { step: 'photo', selectedChannels: channels, post: { buttons: [] } };
+  return ctx.reply('Post uchun rasm, video, GIF yoki hujjat yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
+    [Markup.button.callback('Rasmsiz', 'no_photo')],
+    [Markup.button.callback('Bekor qilish', 'cancel')]
+  ]));
 });
 
 bot.action(/^channel:(-?\d+)$/, async (ctx) => {
@@ -1321,12 +1266,41 @@ bot.action(/^compose:(-?\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const channel = userData(ctx.from.id).channels.find((item) => String(item.id) === ctx.match[1]);
   if (!channel) return ctx.reply('Kanal topilmadi.');
-  ctx.session = { step: 'photo', selectedChannel: channel, post: { buttons: [] } };
-  return ctx.reply('Post uchun rasm yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
+  ctx.session = { step: 'photo', selectedChannels: [channel], post: { buttons: [] } };
+  return ctx.reply('Post uchun rasm, video, GIF yoki hujjat yuboring yoki «Rasmsiz» tugmasini bosing.', Markup.inlineKeyboard([
     [Markup.button.callback('Rasmsiz', 'no_photo')],
     [Markup.button.callback('Bekor qilish', 'cancel')]
   ]));
 });
+
+function saveComposerMedia(ctx, mediaType, mediaId, message) {
+  if (!ctx.session || !['photo', 'broadcast_photo'].includes(ctx.session.step)) return null;
+  ctx.session.post.mediaType = mediaType;
+  ctx.session.post.media = mediaId;
+  if (mediaType === 'photo') ctx.session.post.photo = mediaId;
+
+  if (ctx.session.broadcast && message.caption !== undefined) {
+    ctx.session.post.caption = message.caption;
+    ctx.session.post.captionEntities = message.caption_entities || [];
+    ctx.session.step = 'buttons';
+    return ctx.reply('Media va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:', composerKeyboard(ctx));
+  }
+  if (ctx.session.broadcast) {
+    ctx.session.step = 'broadcast_caption';
+    return ctx.reply('Media saqlandi. Broadcast izohini yuboring:');
+  }
+  if (message.caption !== undefined) {
+    ctx.session.post.caption = message.caption;
+    ctx.session.post.captionEntities = message.caption_entities || [];
+    ctx.session.step = 'buttons';
+    return ctx.reply('Media va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:', composerKeyboard(ctx));
+  }
+  ctx.session.step = 'caption';
+  return ctx.reply('Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.', Markup.inlineKeyboard([
+    [Markup.button.callback('Izohsiz', 'no_caption')],
+    [Markup.button.callback('Bekor qilish', 'cancel')]
+  ]));
+}
 
 bot.on('photo', async (ctx) => {
   if (ctx.session?.step === 'premium_payment_photo') {
@@ -1350,34 +1324,13 @@ bot.on('photo', async (ctx) => {
     return ctx.reply(`<tg-emoji emoji-id="5321210956414459578">✔️</tg-emoji> To\'lov chekingiz adminga yuborildi. Tasdiq kutilmoqda.`, mainKeyboard(ctx));
   }
 
-  if (!ctx.session || !['photo', 'broadcast_photo'].includes(ctx.session.step)) return;
   const message = ctx.message;
-  ctx.session.post.photo = message.photo.at(-1).file_id;
-
-  if (ctx.session.broadcast) {
-    if (message.caption !== undefined) {
-      ctx.session.post.caption = message.caption;
-      ctx.session.post.captionEntities = message.caption_entities || [];
-      ctx.session.step = 'buttons';
-      return ctx.reply('Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:', composerKeyboard(ctx));
-    }
-    ctx.session.step = 'broadcast_caption';
-    return ctx.reply('Rasm saqlandi. Broadcast izohini yuboring:');
-  }
-
-  if (message.caption !== undefined) {
-    ctx.session.post.caption = message.caption;
-    ctx.session.post.captionEntities = message.caption_entities || [];
-    ctx.session.step = 'buttons';
-    return ctx.reply('Rasm va izoh saqlandi. Havolali tugmalar qo\'shishingiz mumkin:', composerKeyboard(ctx));
-  }
-
-  ctx.session.step = 'caption';
-  return ctx.reply('Endi post izohini yuboring yoki «Izohsiz» tugmasini bosing.', Markup.inlineKeyboard([
-    [Markup.button.callback('Izohsiz', 'no_caption')],
-    [Markup.button.callback('Bekor qilish', 'cancel')]
-  ]));
+  return saveComposerMedia(ctx, 'photo', message.photo.at(-1).file_id, message);
 });
+
+bot.on('video', (ctx) => saveComposerMedia(ctx, 'video', ctx.message.video.file_id, ctx.message));
+bot.on('animation', (ctx) => saveComposerMedia(ctx, 'animation', ctx.message.animation.file_id, ctx.message));
+bot.on('document', (ctx) => saveComposerMedia(ctx, 'document', ctx.message.document.file_id, ctx.message));
 
 bot.action('no_photo', async (ctx) => {
   await ctx.answerCbQuery();
@@ -1403,22 +1356,67 @@ bot.action('add_button', async (ctx) => {
   return ctx.reply('Tugma matnini yuboring:');
 });
 
-bot.action(/^button_style:(primary|success|danger)$/, async (ctx) => {
+bot.action('save_template', async (ctx) => {
+  await ctx.answerCbQuery();
+  const post = ctx.session?.post;
+  if (!postHasContent(post)) return ctx.reply('Avval post mazmunini kiriting.');
+  const account = userData(ctx.from.id);
+  if (!account.premium) return ctx.reply('Shablon saqlash Premium foydalanuvchilar uchun mavjud.', mainKeyboard(ctx));
+  account.templates ||= [];
+  account.templates.push({
+    id: Date.now(),
+    name: `Shablon ${account.templates.length + 1}`,
+    post: JSON.parse(JSON.stringify(post)),
+    createdAt: new Date()
+  });
+  account.templates = account.templates.slice(-20);
+  saveData();
+  return ctx.reply('✅ Post shablon sifatida saqlandi.', composerKeyboard(ctx));
+});
+
+bot.action('templates', async (ctx) => {
+  await ctx.answerCbQuery();
+  const account = userData(ctx.from.id);
+  if (!account.premium) return ctx.reply('Shablonlar Premium foydalanuvchilar uchun mavjud.', mainKeyboard(ctx));
+  if (!account.templates?.length) return ctx.reply('Saqlangan shablonlar yo\'q.', composerKeyboard(ctx));
+  return ctx.reply('Shablonni tanlang:', templateKeyboard(account.templates));
+});
+
+bot.action(/^template:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const template = userData(ctx.from.id).templates?.find((item) => String(item.id) === ctx.match[1]);
+  if (!template) return ctx.reply('Shablon topilmadi.', composerKeyboard(ctx));
+  ctx.session.post = JSON.parse(JSON.stringify(template.post));
+  ctx.session.step = 'buttons';
+  return ctx.reply('Shablon yuklandi. Uni ko\'rib chiqing yoki o\'zgartiring:', composerKeyboard(ctx));
+});
+
+bot.action('templates_back', async (ctx) => {
+  await ctx.answerCbQuery();
+  return ctx.reply('Post sozlamalari:', composerKeyboard(ctx));
+});
+
+bot.action(/^button_place:(new|same)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const sessionState = ctx.session || {};
   if (!sessionState.post || !sessionState.pendingButtonText || !sessionState.pendingButtonUrl) {
     return ctx.reply('Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.');
   }
 
-  sessionState.post.buttons.push([{
+  sessionState.post.buttons ||= [];
+  const button = {
     text: sessionState.pendingButtonText,
-    url: sessionState.pendingButtonUrl,
-    style: ctx.match[1]
-  }]);
+    url: sessionState.pendingButtonUrl
+  };
+  if (ctx.match[1] === 'same' && sessionState.post.buttons.length) {
+    sessionState.post.buttons.at(-1).push(button);
+  } else {
+    sessionState.post.buttons.push([button]);
+  }
   sessionState.pendingButtonText = undefined;
   sessionState.pendingButtonUrl = undefined;
   sessionState.step = 'buttons';
-  return ctx.reply('Rangli tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?', composerKeyboard(ctx));
+  return ctx.reply('Tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?', composerKeyboard(ctx));
 });
 
 bot.action('preview', async (ctx) => {
@@ -1428,35 +1426,32 @@ bot.action('preview', async (ctx) => {
 
 bot.action('publish', async (ctx) => {
   await ctx.answerCbQuery();
-  const { selectedChannel, post } = ctx.session;
+  const { selectedChannel, selectedChannels, post } = ctx.session;
   if (ctx.session.broadcast) {
-    if (!post?.caption && !post?.photo) return ctx.reply('Broadcast mazmuni topilmadi.');
+    if (!postHasContent(post)) return ctx.reply('Broadcast mazmuni topilmadi.');
     const sent = await broadcastPost(ctx, { ...post, finalButtons: ctx.session.previewButtons });
     reset(ctx);
     return ctx.reply(`✅ Broadcast ${sent} ta chatga yuborildi.`, mainKeyboard(ctx));
   }
-  if (!selectedChannel || !post || (!post.photo && !post.caption)) return ctx.reply('Post ma\'lumotlari topilmadi.');
+  const channels = selectedChannels?.length ? selectedChannels : selectedChannel ? [selectedChannel] : [];
+  if (!channels.length || !postHasContent(post)) return ctx.reply('Post ma\'lumotlari topilmadi.');
 
-  await chargeForPostIfNeeded(ctx);
+  const chargeResult = await chargeForPostIfNeeded(ctx);
+  if (!chargeResult.ok) return ctx.reply(chargeResult.message, mainKeyboard(ctx));
 
   const buttons = ctx.session.previewButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
-  if (post.photo) {
-    await ctx.telegram.sendPhoto(selectedChannel.id, post.photo, {
-      caption: post.caption || undefined,
-      caption_entities: post.caption ? post.captionEntities : undefined,
-      reply_markup: replyMarkup
-    });
-  } else {
-    await ctx.telegram.sendMessage(selectedChannel.id, post.caption || ' ', {
-      entities: post.captionEntities || undefined,
-      reply_markup: replyMarkup
-    });
+  for (const channel of channels) {
+    await sendPostToChat(ctx, channel.id, post, replyMarkup);
   }
-  data.stats.postsSent += 1;
+  const account = userData(ctx.from.id);
+  account.publishedPosts = Number(account.publishedPosts || 0) + 1;
+  account.publishedChannels = Number(account.publishedChannels || 0) + channels.length;
+  account.lastPublishedAt = new Date();
+  data.stats.postsSent += channels.length;
   saveData();
   reset(ctx);
-  return ctx.reply('✅ Post kanalga muvaffaqiyatli yuborildi.', mainKeyboard(ctx));
+  return ctx.reply(`✅ Post ${channels.length} ta kanalga muvaffaqiyatli yuborildi.`, mainKeyboard(ctx));
 });
 
 bot.action('cancel', async (ctx) => {
@@ -1469,93 +1464,6 @@ bot.on('text', async (ctx) => {
   const sessionState = ctx.session || {};
   const text = ctx.message.text;
   const trimmedText = text.trim();
-
-  if (sessionState.step === 'earning_captcha') {
-    if (!/^\d+$/.test(trimmedText) || Number(trimmedText) !== Number(sessionState.captchaAnswer)) {
-      return ctx.reply('❌ Javob noto\'g\'ri. Yangi captcha olish uchun tugmani bosing.', earningKeyboard());
-    }
-    const reward = Number(data.settings.captchaReward) || 1000;
-    const updatedAccount = await User.findOneAndUpdate(
-      { telegramId: Number(ctx.from.id) },
-      { $inc: { captchaSolved: 1, balance: reward } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    ).lean();
-    data.users[String(ctx.from.id)] = accountFromMongo(updatedAccount);
-    const nextCaptcha = createCaptcha();
-    sessionState.captchaAnswer = nextCaptcha.answer;
-    sessionState.step = 'earning_captcha';
-    return ctx.reply(`${CAPTCHA_ANSWER_EMOJI_TAG} To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.\n\n${CAPTCHA_EMOJI_TAG} Keyingi captcha:\n${nextCaptcha.question}\n\n${CAPTCHA_ANSWER_EMOJI_TAG} Javobni yuboring yoki to\'xtatish uchun bekor qilish tugmasini bosing.`, Markup.inlineKeyboard([
-      [Markup.button.callback('❌ Bekor qilish', 'cancel')]
-    ]));
-  }
-
-  if (sessionState.step === 'earning_withdraw_card') {
-    const cardNumber = trimmedText.replace(/[\s-]/g, '');
-    if (!/^\d{16,19}$/.test(cardNumber)) {
-      return ctx.reply('❌ Karta raqami 16-19 ta raqamdan iborat bo\'lishi kerak. Qaytadan yuboring:');
-    }
-    sessionState.step = 'earning_withdraw_amount';
-    sessionState.cardNumber = cardNumber;
-    return ctx.reply(' Qancha pul yechmoqchisiz? Summani so\'mda yuboring:');
-  }
-
-  if (sessionState.step === 'earning_withdraw_amount') {
-    const account = userData(ctx.from.id);
-    const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-    const amountText = trimmedText.replace(/[\s_]/g, '');
-    const amount = Number(amountText);
-    if (!/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) || amount <= 0) {
-      return ctx.reply('❌ Summani faqat musbat butun son ko\'rinishida yuboring:');
-    }
-    if (account.pendingWithdrawal) {
-      reset(ctx);
-      return ctx.reply('❌ Sizda allaqachon ko\'rib chiqilayotgan so\'rov bor.', earningKeyboard());
-    }
-    if (amount < minimum) {
-      return ctx.reply(`❌ Minimal yechib olish summasi ${minimum} so'm. Boshqa summa yuboring:`);
-    }
-    if (amount > account.balance) {
-      return ctx.reply(`❌ Balansingizda ${account.balance} so'm bor. Undan ko\'p summa yechib bo\'lmaydi:`);
-    }
-    const request = {
-      id: Date.now(),
-      userId: Number(ctx.from.id),
-      cardNumber: sessionState.cardNumber,
-      amount,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    const reservedAccount = await User.findOneAndUpdate(
-      { telegramId: Number(ctx.from.id), pendingWithdrawal: null, balance: { $gte: amount } },
-      { $inc: { balance: -amount }, $set: { pendingWithdrawal: request.id } },
-      { new: true }
-    ).lean();
-    if (!reservedAccount) {
-      return ctx.reply('❌ Balans o\'zgargan yoki boshqa so\'rov faol. Qaytadan urinib ko\'ring.', earningKeyboard());
-    }
-    data.users[String(ctx.from.id)] = accountFromMongo(reservedAccount);
-    data.withdrawals.push(request);
-    saveData();
-    try {
-      await originalSendMessage(ADMIN_TG_ID, withdrawalRequestText(request, account), {
-        reply_markup: withdrawalKeyboard(request.id).reply_markup
-      });
-    } catch (error) {
-      const restoredAccount = await User.findOneAndUpdate(
-        { telegramId: Number(ctx.from.id), pendingWithdrawal: request.id },
-        { $inc: { balance: request.amount }, $set: { pendingWithdrawal: null } },
-        { new: true }
-      ).lean();
-      if (restoredAccount) data.users[String(ctx.from.id)] = accountFromMongo(restoredAccount);
-      data.withdrawals = data.withdrawals.filter((item) => item.id !== request.id);
-      saveData();
-      console.error('Withdrawal request notification failed:', error.response?.description || error.message);
-      reset(ctx);
-      return ctx.reply('❌ So\'rovni adminga yuborishda xatolik yuz berdi. Qaytadan urinib ko\'ring.', earningKeyboard());
-    }
-    reset(ctx);
-    return ctx.reply(`${WITHDRAWAL_SENT_EMOJI_TAG} Pul yechish so\'rovingiz adminga yuborildi. Tasdiq kutilmoqda.`, earningKeyboard());
-  }
 
   if (sessionState.step === 'media_url') {
     if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
@@ -1585,17 +1493,6 @@ bot.on('text', async (ctx) => {
     saveData();
     reset(ctx);
     return ctx.reply(`✅ Premium narxi yangilandi: ${price} so'm`, adminKeyboard(ctx));
-  }
-
-  if (sessionState.step === 'admin_captcha_reward_edit' || sessionState.step === 'admin_minimum_withdrawal_edit') {
-    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-    const amount = Number(trimmedText.replace(/\D/g, ''));
-    if (!Number.isInteger(amount) || amount <= 0) return ctx.reply('❌ Summani faqat musbat butun son ko\'rinishida kiriting.', adminKeyboard(ctx));
-    if (sessionState.step === 'admin_captcha_reward_edit') data.settings.captchaReward = amount;
-    else data.settings.minimumWithdrawal = amount;
-    saveData();
-    reset(ctx);
-    return ctx.reply(`✅ Sozlama yangilandi: ${amount} so'm`, adminKeyboard(ctx));
   }
 
   if (sessionState.step === 'required_subscription_channel') {
@@ -1659,8 +1556,8 @@ bot.on('text', async (ctx) => {
   if (sessionState.step === 'button_url') {
     if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
     sessionState.pendingButtonUrl = trimmedText;
-    sessionState.step = 'button_style';
-    return ctx.reply('Tugma rangini tanlang:', buttonStyleKeyboard(ctx));
+    sessionState.step = 'button_placement';
+    return ctx.reply('Tugma joylashuvini tanlang:', buttonStyleKeyboard(ctx));
   }
 
   if (sessionState.step === 'admin_user_search') {
