@@ -706,7 +706,16 @@ async function sendMediaFromUrl(ctx, url) {
   }
 }
 
-function buttonStyleKeyboard(ctx) {
+function buttonColorKeyboard(ctx) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔵 Ko\'k', 'button_color:blue')],
+    [Markup.button.callback('🟢 Yashil', 'button_color:green')],
+    [Markup.button.callback('🔴 Qizil', 'button_color:red')],
+    [Markup.button.callback(localizeReply(ctx, '❌ Bekor qilish'), 'cancel')]
+  ]);
+}
+
+function buttonPlacementKeyboard(ctx) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ Yangi qatorga qo\'shish', 'button_place:new')],
     [Markup.button.callback('↔️ Shu qatorga qo\'shish', 'button_place:same')],
@@ -1396,16 +1405,31 @@ bot.action('templates_back', async (ctx) => {
   return ctx.reply('Post sozlamalari:', composerKeyboard(ctx));
 });
 
-bot.action(/^button_place:(new|same)$/, async (ctx) => {
+bot.action(/^button_color:(blue|green|red)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const sessionState = ctx.session || {};
   if (!sessionState.post || !sessionState.pendingButtonText || !sessionState.pendingButtonUrl) {
     return ctx.reply('Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.');
   }
+  sessionState.pendingButtonColor = ctx.match[1];
+  return ctx.reply('Tugma qatorini tanlang:', buttonPlacementKeyboard(ctx));
+});
+
+bot.action(/^button_place:(new|same)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const sessionState = ctx.session || {};
+  if (!sessionState.post || !sessionState.pendingButtonText || !sessionState.pendingButtonUrl || !sessionState.pendingButtonColor) {
+    return ctx.reply('Tugma ma\'lumotlari topilmadi. Qaytadan boshlang.');
+  }
 
   sessionState.post.buttons ||= [];
+  const colorMarker = {
+    blue: '🔵',
+    green: '🟢',
+    red: '🔴'
+  }[sessionState.pendingButtonColor];
   const button = {
-    text: sessionState.pendingButtonText,
+    text: `${colorMarker} ${sessionState.pendingButtonText}`,
     url: sessionState.pendingButtonUrl
   };
   if (ctx.match[1] === 'same' && sessionState.post.buttons.length) {
@@ -1415,6 +1439,7 @@ bot.action(/^button_place:(new|same)$/, async (ctx) => {
   }
   sessionState.pendingButtonText = undefined;
   sessionState.pendingButtonUrl = undefined;
+  sessionState.pendingButtonColor = undefined;
   sessionState.step = 'buttons';
   return ctx.reply('Tugma qo\'shildi. Yana tugma qo\'shasizmi yoki postni yuboramizmi?', composerKeyboard(ctx));
 });
@@ -1556,8 +1581,8 @@ bot.on('text', async (ctx) => {
   if (sessionState.step === 'button_url') {
     if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
     sessionState.pendingButtonUrl = trimmedText;
-    sessionState.step = 'button_placement';
-    return ctx.reply('Tugma joylashuvini tanlang:', buttonStyleKeyboard(ctx));
+    sessionState.step = 'button_color';
+    return ctx.reply('Tugma rangini tanlang:', buttonColorKeyboard(ctx));
   }
 
   if (sessionState.step === 'admin_user_search') {
