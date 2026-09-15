@@ -28,6 +28,48 @@ if (!token) {
   throw new Error('BOT_TOKEN is missing. Copy .env.example to .env and add the token.');
 }
 
+function earningKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')],
+    [Markup.button.callback('💰 Balans', 'earning:balance')]
+  ]);
+}
+
+function withdrawalKeyboard(requestId) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('✅ To\'landi', `admin:withdrawal_approve:${requestId}`)],
+    [Markup.button.callback('❌ Rad etish', `admin:withdrawal_reject:${requestId}`)]
+  ]);
+}
+
+function earningText(ctx) {
+  const reward = Number(data.settings.captchaReward) || 1000;
+  const minimum = Number(data.settings.minimumWithdrawal) || 10000;
+  return `💰 Pul ishlash\n\nHar bir captcha uchun ${reward} so'm olasiz.\nMinimal yechib olish: ${minimum} so'm`;
+}
+
+function balanceText(ctx) {
+  const account = userData(ctx.from.id);
+  return `💰 Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Balans: ${account.balance} so'm`;
+}
+
+function createCaptcha() {
+  const first = Math.floor(Math.random() * 20) + 1;
+  const second = Math.floor(Math.random() * 20) + 1;
+  return { question: `${first} + ${second} = ?`, answer: first + second };
+}
+
+function withdrawalRequestText(request, account) {
+  return `💸 Pul yechish so'rovi\n\n` +
+    `Foydalanuvchi: ${account.username || account.nickname || request.userId}\n` +
+    `Telegram ID: ${request.userId}\n` +
+    `Bot personal ID: ${account.personalId || '—'}\n` +
+    `Karta: ${request.cardNumber}\n` +
+    `Summa: ${request.amount} so'm\n` +
+    `Captcha: ${account.captchaSolved} ta\n` +
+    `So'rov ID: ${request.id}`;
+}
+
 const bot = new Telegraf(token);
 const PREMIUM_EMOJI_TAG = '<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>';
 
@@ -69,6 +111,9 @@ data.settings ||= {};
 data.settings.requiredChannels ||= [];
 data.settings.premiumCardNumber ||= '9860 0803 9258 5933';
 data.settings.premiumPrice ||= 10000;
+data.settings.captchaReward ||= 1000;
+data.settings.minimumWithdrawal ||= 10000;
+data.withdrawals ||= [];
 if (data.settings.requiredChannel && !Array.isArray(data.settings.requiredChannels)) {
   data.settings.requiredChannels = [data.settings.requiredChannel];
 }
@@ -216,7 +261,10 @@ function userData(userId) {
       nickname: '',
       premium: false,
       postLog: [],
-      profileSeen: false
+      profileSeen: false,
+      captchaSolved: 0,
+      balance: 0,
+      pendingWithdrawal: null
     };
   }
 
@@ -225,6 +273,9 @@ function userData(userId) {
   data.users[key].premium ??= false;
   data.users[key].postLog ||= [];
   data.users[key].profileSeen ??= false;
+  data.users[key].captchaSolved ||= 0;
+  data.users[key].balance ||= 0;
+  data.users[key].pendingWithdrawal ||= null;
 
   if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
     const usedIds = Object.values(data.users || {})
@@ -259,7 +310,7 @@ function isAdmin(ctx) {
 }
 
 function mainKeyboard(ctx) {
-  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
+  const keyboard = [[tr(ctx, 'channels'), tr(ctx, 'addChannel')], ['💰 Pul ishlash'], [tr(ctx, 'settings')], ['👤 Profilim', '💎 Premium']];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
   return Markup.keyboard(keyboard).resize();
 }
@@ -272,6 +323,7 @@ function adminKeyboard(ctx) {
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
     [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
     [Markup.button.callback('� Premium to\'lov sozlamalari', 'admin:premium_settings')],
+    [Markup.button.callback('💰 Pul ishlash sozlamalari', 'admin:earning_settings')],
     [Markup.button.callback('�🔍 Userni qidirish', 'admin:user_search')]
   ]);
 }
@@ -796,6 +848,10 @@ bot.hears('💎 Premium', (ctx) => {
   return ctx.reply(buildPremiumText(ctx), premiumInlineKeyboard());
 });
 
+bot.hears('💰 Pul ishlash', (ctx) => {
+  return ctx.reply(earningText(ctx), earningKeyboard());
+});
+
 bot.hears(Object.values(text.admin), (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   return ctx.reply('🛠 Admin panel', adminKeyboard(ctx));
@@ -828,6 +884,52 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
 });
 
 bot.action('premium_paid', async (ctx) => {
+
+  bot.action('earning:captcha', async (ctx) => {
+    await ctx.answerCbQuery();
+    const captcha = createCaptcha();
+    ctx.session = { step: 'earning_captcha', captchaAnswer: captcha.answer };
+    return ctx.reply(`🧩 Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
+      [Markup.button.callback('❌ Bekor qilish', 'cancel')]
+    ]));
+  });
+
+  bot.action('earning:balance', async (ctx) => {
+    await ctx.answerCbQuery();
+    const account = userData(ctx.from.id);
+    const buttons = [[Markup.button.callback('💸 Pul yechib olish', 'earning:withdraw')], [Markup.button.callback('🧩 Captcha yechish', 'earning:captcha')]];
+    return ctx.reply(balanceText(ctx), Markup.inlineKeyboard(buttons));
+  });
+
+  bot.action('earning:withdraw', async (ctx) => {
+    await ctx.answerCbQuery();
+    const account = userData(ctx.from.id);
+    const minimum = Number(data.settings.minimumWithdrawal) || 10000;
+    if (account.pendingWithdrawal) return ctx.reply('⏳ Sizda ko\'rib chiqilayotgan pul yechish so\'rovi bor.', earningKeyboard());
+    if (account.balance < minimum) return ctx.reply(`❌ Pul yechish uchun kamida ${minimum} so'm bo\'lishi kerak.`, earningKeyboard());
+    ctx.session = { step: 'earning_withdraw_card' };
+    return ctx.reply('💳 Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):');
+  });
+
+  bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const request = data.withdrawals.find((item) => String(item.id) === ctx.match[2]);
+    if (!request || request.status !== 'pending') return ctx.reply('Bu so\'rov allaqachon ko\'rib chiqilgan.', adminKeyboard(ctx));
+    const account = userData(request.userId);
+    request.status = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
+    account.pendingWithdrawal = null;
+    if (request.status === 'rejected') account.balance += request.amount;
+    saveData();
+    try {
+      await bot.telegram.sendMessage(request.userId, request.status === 'approved'
+        ? `✅ Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
+        : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`);
+    } catch (error) {
+      console.error('Withdrawal status notification failed:', error.response?.description || error.message);
+    }
+    return ctx.reply(`✅ So'rov ${request.status === 'approved' ? 'tasdiqlandi' : 'rad etildi'}.`, adminKeyboard(ctx));
+  });
   await ctx.answerCbQuery();
   const account = userData(ctx.from.id);
   if (account.premium) {
@@ -954,6 +1056,30 @@ bot.action('admin:premium_price_edit', async (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   ctx.session = { step: 'admin_premium_price_edit' };
   return ctx.reply(`Yangi premium narxini yuboring (hozirgi: ${Number(data.settings?.premiumPrice || 10000)} so'm)`, adminKeyboard(ctx));
+});
+
+bot.action('admin:earning_settings', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  return ctx.reply(`💰 Pul ishlash sozlamalari\n\nCaptcha mukofoti: ${data.settings.captchaReward} so'm\nMinimal yechib olish: ${data.settings.minimumWithdrawal} so'm`, Markup.inlineKeyboard([
+    [Markup.button.callback('💵 Captcha summasini o\'zgartirish', 'admin:captcha_reward_edit')],
+    [Markup.button.callback('📉 Minimal summani o\'zgartirish', 'admin:minimum_withdrawal_edit')],
+    [Markup.button.callback('⬅️ Orqaga', 'admin:back')]
+  ]));
+});
+
+bot.action('admin:captcha_reward_edit', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_captcha_reward_edit' };
+  return ctx.reply(`Yangi captcha summasini yuboring (hozirgi: ${data.settings.captchaReward} so'm):`, adminKeyboard(ctx));
+});
+
+bot.action('admin:minimum_withdrawal_edit', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+  ctx.session = { step: 'admin_minimum_withdrawal_edit' };
+  return ctx.reply(`Yangi minimal yechib olish summasini yuboring (hozirgi: ${data.settings.minimumWithdrawal} so'm):`, adminKeyboard(ctx));
 });
 
 bot.action('admin:back', async (ctx) => {
@@ -1163,6 +1289,58 @@ bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const trimmedText = text.trim();
 
+  if (sessionState.step === 'earning_captcha') {
+    if (!/^\d+$/.test(trimmedText) || Number(trimmedText) !== Number(sessionState.captchaAnswer)) {
+      return ctx.reply('❌ Javob noto\'g\'ri. Yangi captcha olish uchun tugmani bosing.', earningKeyboard());
+    }
+    const account = userData(ctx.from.id);
+    account.captchaSolved += 1;
+    account.balance += Number(data.settings.captchaReward) || 1000;
+    saveData();
+    reset(ctx);
+    return ctx.reply(`✅ To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.`, earningKeyboard());
+  }
+
+  if (sessionState.step === 'earning_withdraw_card') {
+    const account = userData(ctx.from.id);
+    const cardNumber = trimmedText.replace(/[\s-]/g, '');
+    if (!/^\d{16,19}$/.test(cardNumber)) {
+      return ctx.reply('❌ Karta raqami 16-19 ta raqamdan iborat bo\'lishi kerak. Qaytadan yuboring:');
+    }
+    const minimum = Number(data.settings.minimumWithdrawal) || 10000;
+    if (account.balance < minimum || account.pendingWithdrawal) {
+      reset(ctx);
+      return ctx.reply('❌ Pul yechish so\'rovi yaratilmadi. Balans yoki faol so\'rovni tekshiring.', earningKeyboard());
+    }
+    const request = {
+      id: Date.now(),
+      userId: Number(ctx.from.id),
+      cardNumber,
+      amount: account.balance,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    account.balance = 0;
+    account.pendingWithdrawal = request.id;
+    data.withdrawals.push(request);
+    saveData();
+    try {
+      await bot.telegram.sendMessage(ADMIN_TG_ID, withdrawalRequestText(request, account), {
+        reply_markup: withdrawalKeyboard(request.id).reply_markup
+      });
+    } catch (error) {
+      account.balance += request.amount;
+      account.pendingWithdrawal = null;
+      data.withdrawals = data.withdrawals.filter((item) => item.id !== request.id);
+      saveData();
+      console.error('Withdrawal request notification failed:', error.response?.description || error.message);
+      reset(ctx);
+      return ctx.reply('❌ So\'rovni adminga yuborishda xatolik yuz berdi. Qaytadan urinib ko\'ring.', earningKeyboard());
+    }
+    reset(ctx);
+    return ctx.reply('✅ Pul yechish so\'rovingiz adminga yuborildi. Tasdiq kutilmoqda.', earningKeyboard());
+  }
+
   if (sessionState.step === 'media_url') {
     if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
     sessionState.step = null;
@@ -1191,6 +1369,17 @@ bot.on('text', async (ctx) => {
     saveData();
     reset(ctx);
     return ctx.reply(`✅ Premium narxi yangilandi: ${price} so'm`, adminKeyboard(ctx));
+  }
+
+  if (sessionState.step === 'admin_captcha_reward_edit' || sessionState.step === 'admin_minimum_withdrawal_edit') {
+    if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
+    const amount = Number(trimmedText.replace(/\D/g, ''));
+    if (!Number.isInteger(amount) || amount <= 0) return ctx.reply('❌ Summani faqat musbat butun son ko\'rinishida kiriting.', adminKeyboard(ctx));
+    if (sessionState.step === 'admin_captcha_reward_edit') data.settings.captchaReward = amount;
+    else data.settings.minimumWithdrawal = amount;
+    saveData();
+    reset(ctx);
+    return ctx.reply(`✅ Sozlama yangilandi: ${amount} so'm`, adminKeyboard(ctx));
   }
 
   if (sessionState.step === 'required_subscription_channel') {
