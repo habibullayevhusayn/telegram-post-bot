@@ -50,7 +50,7 @@ function earningText(ctx) {
 
 function balanceText(ctx) {
   const account = userData(ctx.from.id);
-  return `💰 Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Balans: ${account.balance} so'm`;
+  return `💰 Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Joriy balans: ${account.balance} so'm\n💸 Jami to'langan: ${account.totalWithdrawn} so'm`;
 }
 
 function createCaptcha() {
@@ -77,6 +77,13 @@ function prefixPremiumEmojiIfMissing(text) {
   if (typeof text !== 'string') return text;
   if (/<tg-emoji\s+emoji-id=\"[^"]+\">[\s\S]*?<\/tg-emoji>/.test(text)) return text;
   return `${PREMIUM_EMOJI_TAG} ${text}`;
+}
+
+function isEarningContext(ctx) {
+  const callbackData = ctx.callbackQuery?.data || '';
+  const step = ctx.session?.step || '';
+  return callbackData.startsWith('earning:') || callbackData.startsWith('admin:withdrawal_') ||
+    step.startsWith('earning_') || ctx.message?.text === '💰 Pul ishlash';
 }
 
 const originalSendMessage = bot.telegram.sendMessage.bind(bot.telegram);
@@ -264,6 +271,7 @@ function userData(userId) {
       profileSeen: false,
       captchaSolved: 0,
       balance: 0,
+      totalWithdrawn: 0,
       pendingWithdrawal: null
     };
   }
@@ -275,6 +283,7 @@ function userData(userId) {
   data.users[key].profileSeen ??= false;
   data.users[key].captchaSolved ||= 0;
   data.users[key].balance ||= 0;
+  data.users[key].totalWithdrawn ||= 0;
   data.users[key].pendingWithdrawal ||= null;
 
   if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
@@ -787,7 +796,7 @@ bot.use(async (ctx, next) => {
   const originalReply = ctx.reply.bind(ctx);
   ctx.reply = (message, ...args) => {
     const localized = localizeReply(ctx, message);
-    const enriched = prefixPremiumEmojiIfMissing(localized);
+    const enriched = isEarningContext(ctx) ? localized : prefixPremiumEmojiIfMissing(localized);
     if (enriched.includes('<tg-emoji')) {
       if (args.length === 0) return originalReply(enriched, { parse_mode: 'HTML' });
       const firstArg = args[0];
@@ -927,9 +936,10 @@ bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
   request.status = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
   account.pendingWithdrawal = null;
   if (request.status === 'rejected') account.balance += request.amount;
+  if (request.status === 'approved') account.totalWithdrawn += request.amount;
   saveData();
   try {
-    await bot.telegram.sendMessage(request.userId, request.status === 'approved'
+    await originalSendMessage(request.userId, request.status === 'approved'
       ? `✅ Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
       : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`);
   } catch (error) {
@@ -1305,21 +1315,38 @@ bot.on('text', async (ctx) => {
   }
 
   if (sessionState.step === 'earning_withdraw_card') {
-    const account = userData(ctx.from.id);
     const cardNumber = trimmedText.replace(/[\s-]/g, '');
     if (!/^\d{16,19}$/.test(cardNumber)) {
       return ctx.reply('❌ Karta raqami 16-19 ta raqamdan iborat bo\'lishi kerak. Qaytadan yuboring:');
     }
+    sessionState.step = 'earning_withdraw_amount';
+    sessionState.cardNumber = cardNumber;
+    return ctx.reply('💵 Qancha pul yechmoqchisiz? Summani so\'mda yuboring:');
+  }
+
+  if (sessionState.step === 'earning_withdraw_amount') {
+    const account = userData(ctx.from.id);
     const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-    if (account.balance < minimum || account.pendingWithdrawal) {
+    const amountText = trimmedText.replace(/[\s_]/g, '');
+    const amount = Number(amountText);
+    if (!/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) || amount <= 0) {
+      return ctx.reply('❌ Summani faqat musbat butun son ko\'rinishida yuboring:');
+    }
+    if (account.pendingWithdrawal) {
       reset(ctx);
-      return ctx.reply('❌ Pul yechish so\'rovi yaratilmadi. Balans yoki faol so\'rovni tekshiring.', earningKeyboard());
+      return ctx.reply('❌ Sizda allaqachon ko\'rib chiqilayotgan so\'rov bor.', earningKeyboard());
+    }
+    if (amount < minimum) {
+      return ctx.reply(`❌ Minimal yechib olish summasi ${minimum} so'm. Boshqa summa yuboring:`);
+    }
+    if (amount > account.balance) {
+      return ctx.reply(`❌ Balansingizda ${account.balance} so'm bor. Undan ko\'p summa yechib bo\'lmaydi:`);
     }
     const request = {
       id: Date.now(),
       userId: Number(ctx.from.id),
-      cardNumber,
-      amount: account.balance,
+      cardNumber: sessionState.cardNumber,
+      amount,
       status: 'pending',
       createdAt: new Date().toISOString()
     };
@@ -1328,7 +1355,7 @@ bot.on('text', async (ctx) => {
     data.withdrawals.push(request);
     saveData();
     try {
-      await bot.telegram.sendMessage(ADMIN_TG_ID, withdrawalRequestText(request, account), {
+      await originalSendMessage(ADMIN_TG_ID, withdrawalRequestText(request, account), {
         reply_markup: withdrawalKeyboard(request.id).reply_markup
       });
     } catch (error) {
