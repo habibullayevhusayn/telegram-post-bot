@@ -1462,7 +1462,7 @@ bot.action('publish', async (ctx) => {
 bot.action('cancel', async (ctx) => {
   await ctx.answerCbQuery();
   reset(ctx);
-  return ctx.reply(`${CANCEL_EMOJI_TAG} Amal bekor qilindi.`, mainKeyboard(ctx));
+  return ctx.reply(`${CANCEL_EMOJI_TAG} Amal bekor qilindi`, mainKeyboard(ctx));
 });
 
 bot.on('text', async (ctx) => {
