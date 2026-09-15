@@ -45,7 +45,10 @@ const app = express();
 const port = Number(process.env.PORT) || 3000;
 
 app.get('/', (req, res) => res.send('Bot ishlamoqda...'));
-app.get('/health', (req, res) => res.status(200).json({ ok: true }));
+app.get('/health', (req, res) => res.status(200).json({
+  ok: true,
+  mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+}));
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Express server ${port} portda ishlayapti.`);
