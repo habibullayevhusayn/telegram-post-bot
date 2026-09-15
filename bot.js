@@ -1350,7 +1350,7 @@ bot.on('text', async (ctx) => {
       status: 'pending',
       createdAt: new Date().toISOString()
     };
-    account.balance = 0;
+    account.balance -= amount;
     account.pendingWithdrawal = request.id;
     data.withdrawals.push(request);
     saveData();
