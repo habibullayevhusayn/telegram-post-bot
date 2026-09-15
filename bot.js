@@ -1296,8 +1296,12 @@ bot.on('text', async (ctx) => {
     account.captchaSolved += 1;
     account.balance += Number(data.settings.captchaReward) || 1000;
     saveData();
-    reset(ctx);
-    return ctx.reply(`✅ To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.`, earningKeyboard());
+    const nextCaptcha = createCaptcha();
+    sessionState.captchaAnswer = nextCaptcha.answer;
+    sessionState.step = 'earning_captcha';
+    return ctx.reply(`✅ To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.\n\n🧩 Keyingi captcha:\n${nextCaptcha.question}\n\nJavobni yuboring yoki to\'xtatish uchun bekor qilish tugmasini bosing.`, Markup.inlineKeyboard([
+      [Markup.button.callback('❌ Bekor qilish', 'cancel')]
+    ]));
   }
 
   if (sessionState.step === 'earning_withdraw_card') {
