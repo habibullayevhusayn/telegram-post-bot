@@ -89,12 +89,12 @@ function withdrawalKeyboard(requestId) {
 function earningText(ctx) {
   const reward = Number(data.settings.captchaReward) || 1000;
   const minimum = Number(data.settings.minimumWithdrawal) || 10000;
-  return `💰 Pul ishlash\n\nHar bir captcha uchun ${reward} so'm olasiz.\nMinimal yechib olish: ${minimum} so'm`;
+  return `${EARNING_EMOJI_TAG} Pul ishlash\n\nHar bir captcha uchun ${reward} so'm olasiz.\nMinimal yechib olish: ${minimum} so'm`;
 }
 
 function balanceText(ctx) {
   const account = userData(ctx.from.id);
-  return `💰 Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Joriy balans: ${account.balance} so'm\n💸 Jami to'langan: ${account.totalWithdrawn} so'm`;
+  return `${BALANCE_EMOJI_TAG} Balans\n\n✅ Yechilgan captchalar: ${account.captchaSolved}\n💵 Joriy balans: ${account.balance} so'm\n💸 Jami to'langan: ${account.totalWithdrawn} so'm`;
 }
 
 function createCaptcha() {
@@ -116,6 +116,14 @@ function withdrawalRequestText(request, account) {
 
 const bot = new Telegraf(token);
 const PREMIUM_EMOJI_TAG = '<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>';
+const CAPTCHA_EMOJI_TAG = '<tg-emoji emoji-id="5395820027314215806">🧩</tg-emoji>';
+const EARNING_EMOJI_TAG = '<tg-emoji emoji-id="5363941998359237276">💸</tg-emoji>';
+const BALANCE_EMOJI_TAG = '<tg-emoji emoji-id="5224257782013769471">💰</tg-emoji>';
+const CARD_EMOJI_TAG = '<tg-emoji emoji-id="5213403875670765022">💳</tg-emoji>';
+const CANCEL_EMOJI_TAG = '<tg-emoji emoji-id="5199785165735367039">⚡️</tg-emoji>';
+const CAPTCHA_ANSWER_EMOJI_TAG = '<tg-emoji emoji-id="5274182275704039686">⚡</tg-emoji>';
+const WITHDRAWAL_SENT_EMOJI_TAG = '<tg-emoji emoji-id="5416028557111474714">⚡️</tg-emoji>';
+const WITHDRAWAL_APPROVED_EMOJI_TAG = '<tg-emoji emoji-id="5307513983584973446">⚡️</tg-emoji>';
 
 function prefixPremiumEmojiIfMissing(text) {
   if (typeof text !== 'string') return text;
@@ -475,14 +483,18 @@ function mainKeyboard(ctx) {
 
 function adminKeyboard(ctx) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback(localizeReply(ctx, '📊 Statistika'), 'admin:stats')],
-    [Markup.button.callback(localizeReply(ctx, '📣 Barchaga post yuborish'), 'admin:broadcast')],
+    [
+      Markup.button.callback(localizeReply(ctx, '📊 Statistika'), 'admin:stats'),
+      Markup.button.callback(localizeReply(ctx, '📣 Barchaga post yuborish'), 'admin:broadcast')
+    ],
+    [
+      Markup.button.callback('💳 Premium to\'lov sozlamalari', 'admin:premium_settings'),
+      Markup.button.callback('💰 Pul ishlash sozlamalari', 'admin:earning_settings')
+    ],
     [Markup.button.callback(localizeReply(ctx, '📢 Majburiy obunani sozlash'), 'admin:subscription')],
     [Markup.button.callback(localizeReply(ctx, '📋 Majburiy obuna kanallar ro\'yxati'), 'admin:required_list')],
     [Markup.button.callback(localizeReply(ctx, '❌ Majburiy obunani o\'chirish'), 'admin:subscription_off')],
-    [Markup.button.callback('� Premium to\'lov sozlamalari', 'admin:premium_settings')],
-    [Markup.button.callback('💰 Pul ishlash sozlamalari', 'admin:earning_settings')],
-    [Markup.button.callback('�🔍 Userni qidirish', 'admin:user_search')]
+    [Markup.button.callback('🔍 Userni qidirish', 'admin:user_search')]
   ]);
 }
 
@@ -1051,7 +1063,7 @@ bot.action('earning:captcha', async (ctx) => {
   await ctx.answerCbQuery();
   const captcha = createCaptcha();
   ctx.session = { step: 'earning_captcha', captchaAnswer: captcha.answer };
-  return ctx.reply(`🧩 Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
+  return ctx.reply(`${CAPTCHA_EMOJI_TAG} Captcha\n\n${captcha.question}\n\nJavobni faqat son ko'rinishida yuboring:`, Markup.inlineKeyboard([
     [Markup.button.callback('❌ Bekor qilish', 'cancel')]
   ]));
 });
@@ -1069,7 +1081,7 @@ bot.action('earning:withdraw', async (ctx) => {
   if (account.pendingWithdrawal) return ctx.reply("⏳ Sizda ko'rib chiqilayotgan pul yechish so'rovi bor.", earningKeyboard());
   if (account.balance < minimum) return ctx.reply(`❌ Pul yechish uchun kamida ${minimum} so'm bo'lishi kerak.`, earningKeyboard());
   ctx.session = { step: 'earning_withdraw_card' };
-  return ctx.reply('💳 Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):');
+  return ctx.reply(`${CARD_EMOJI_TAG} Pul tushadigan karta raqamingizni yuboring (16-19 ta raqam):`);
 });
 
 bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
@@ -1093,8 +1105,9 @@ bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
   saveData();
   try {
     await originalSendMessage(request.userId, request.status === 'approved'
-      ? `✅ Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
-      : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`);
+      ? `${WITHDRAWAL_APPROVED_EMOJI_TAG} Pul yechish so'rovingiz tasdiqlandi. ${request.amount} so'm kartangizga o'tkaziladi.`
+      : `❌ Pul yechish so'rovingiz rad etildi. ${request.amount} so'm balansingizga qaytarildi.`,
+    request.status === 'approved' ? { parse_mode: 'HTML' } : undefined);
   } catch (error) {
     console.error('Withdrawal status notification failed:', error.response?.description || error.message);
   }
@@ -1449,7 +1462,7 @@ bot.action('publish', async (ctx) => {
 bot.action('cancel', async (ctx) => {
   await ctx.answerCbQuery();
   reset(ctx);
-  return ctx.reply('Amal bekor qilindi.', mainKeyboard(ctx));
+  return ctx.reply(`${CANCEL_EMOJI_TAG} Amal bekor qilindi.`, mainKeyboard(ctx));
 });
 
 bot.on('text', async (ctx) => {
@@ -1471,7 +1484,7 @@ bot.on('text', async (ctx) => {
     const nextCaptcha = createCaptcha();
     sessionState.captchaAnswer = nextCaptcha.answer;
     sessionState.step = 'earning_captcha';
-    return ctx.reply(`✅ To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.\n\n🧩 Keyingi captcha:\n${nextCaptcha.question}\n\nJavobni yuboring yoki to\'xtatish uchun bekor qilish tugmasini bosing.`, Markup.inlineKeyboard([
+    return ctx.reply(`${CAPTCHA_ANSWER_EMOJI_TAG} To\'g\'ri javob! Balansingizga ${data.settings.captchaReward} so'm qo\'shildi.\n\n${CAPTCHA_EMOJI_TAG} Keyingi captcha:\n${nextCaptcha.question}\n\n${CAPTCHA_ANSWER_EMOJI_TAG} Javobni yuboring yoki to\'xtatish uchun bekor qilish tugmasini bosing.`, Markup.inlineKeyboard([
       [Markup.button.callback('❌ Bekor qilish', 'cancel')]
     ]));
   }
@@ -1541,7 +1554,7 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ So\'rovni adminga yuborishda xatolik yuz berdi. Qaytadan urinib ko\'ring.', earningKeyboard());
     }
     reset(ctx);
-    return ctx.reply('✅ Pul yechish so\'rovingiz adminga yuborildi. Tasdiq kutilmoqda.', earningKeyboard());
+    return ctx.reply(`${WITHDRAWAL_SENT_EMOJI_TAG} Pul yechish so\'rovingiz adminga yuborildi. Tasdiq kutilmoqda.`, earningKeyboard());
   }
 
   if (sessionState.step === 'media_url') {
