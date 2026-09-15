@@ -1,4 +1,45 @@
 require('dotenv').config();
+const mongoose = require('mongoose');
+
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+  throw new Error('MONGODB_URI is missing. Add the MongoDB Atlas connection string to .env.');
+}
+
+const mongoConnection = mongoose.connect(mongoUri, {
+  serverSelectionTimeoutMS: 10000
+});
+
+const userSchema = new mongoose.Schema({
+  telegramId: { type: Number, unique: true, required: true, index: true },
+  username: { type: String, default: '' },
+  balance: { type: Number, default: 0 },
+  referredBy: { type: Number, default: null },
+  joinedAt: { type: Date, default: Date.now },
+  personalId: { type: Number },
+  nickname: { type: String, default: '' },
+  language: { type: String, default: null },
+  channels: { type: Array, default: [] },
+  premium: { type: Boolean, default: false },
+  postLog: { type: Array, default: [] },
+  profileSeen: { type: Boolean, default: false },
+  captchaSolved: { type: Number, default: 0 },
+  totalWithdrawn: { type: Number, default: 0 },
+  pendingWithdrawal: { type: mongoose.Schema.Types.Mixed, default: null }
+}, { versionKey: false });
+
+const botConfigSchema = new mongoose.Schema({
+  configKey: { type: String, default: 'main_config', unique: true },
+  channels: { type: Array, default: [] },
+  maintenanceMode: { type: Boolean, default: false },
+  settings: { type: mongoose.Schema.Types.Mixed, default: {} },
+  stats: { type: mongoose.Schema.Types.Mixed, default: {} },
+  withdrawals: { type: Array, default: [] }
+}, { versionKey: false });
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+const BotConfig = mongoose.models.BotConfig || mongoose.model('BotConfig', botConfigSchema);
+
 const express = require('express');
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -110,9 +151,9 @@ bot.telegram.sendPhoto = async (chatId, photo, extra = {}) => {
 
 const localDataPath = path.join(__dirname, 'data.json');
 const renderDiskDataPath = '/opt/render/project/src/data/data.json';
-const dataPath = fs.existsSync(renderDiskDataPath) ? renderDiskDataPath : localDataPath;
-fs.mkdirSync(path.dirname(dataPath), { recursive: true });
-const data = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : { users: {} };
+const legacyDataPath = fs.existsSync(renderDiskDataPath) ? renderDiskDataPath : localDataPath;
+const legacyData = fs.existsSync(legacyDataPath) ? JSON.parse(fs.readFileSync(legacyDataPath, 'utf8')) : { users: {} };
+const data = { users: {}, settings: {}, stats: {}, withdrawals: [] };
 data.users ||= {};
 data.settings ||= {};
 data.settings.requiredChannels ||= [];
@@ -245,11 +286,88 @@ function localizeReply(ctx, message) {
   const prefix = prefixMap[message] || prefixMap[translated];
   return prefix ? `${prefix} ${translated}` : translated;
 }
-data.settings ||= {};
-data.stats ||= { postsSent: 0, broadcastsSent: 0 };
+data.settings.requiredChannels ||= [];
+data.settings.premiumCardNumber ||=  '9860 0803 9258 5933';
+data.settings.premiumPrice ||= 10000;
+data.settings.captchaReward ||= 1000;
+data.settings.minimumWithdrawal ||= 10000;
+data.stats = { postsSent: 0, broadcastsSent: 0 };
+
+let mongoWriteQueue = Promise.resolve();
 
 function saveData() {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  mongoWriteQueue = mongoWriteQueue.then(async () => {
+    const userOperations = Object.entries(data.users).map(([telegramId, account]) => ({
+      updateOne: {
+        filter: { telegramId: Number(telegramId) },
+        update: { $set: { ...account, telegramId: Number(telegramId) } },
+        upsert: true
+      }
+    }));
+    if (userOperations.length) await User.bulkWrite(userOperations, { ordered: false });
+    await BotConfig.updateOne({ configKey: 'main_config' }, {
+      $set: {
+        channels: data.settings.requiredChannels || [],
+        settings: data.settings,
+        stats: data.stats,
+        withdrawals: data.withdrawals
+      }
+    }, { upsert: true });
+  }).catch((error) => {
+    console.error('MongoDB persistence failed:', error.message);
+  });
+  return mongoWriteQueue;
+}
+
+function accountFromMongo(document) {
+  const account = { ...document };
+  delete account._id;
+  delete account.__v;
+  return account;
+}
+
+async function hydrateFromMongo() {
+  await mongoConnection;
+  let config = await BotConfig.findOne({ configKey: 'main_config' }).lean();
+  const existingUsers = await User.countDocuments();
+
+  if (!config && existingUsers === 0 && Object.keys(legacyData.users || {}).length) {
+    const legacyUsers = Object.entries(legacyData.users).map(([telegramId, account]) => ({
+      updateOne: {
+        filter: { telegramId: Number(telegramId) },
+        update: { $set: { ...account, telegramId: Number(telegramId), joinedAt: account.joinedAt || new Date() } },
+        upsert: true
+      }
+    }));
+    await User.bulkWrite(legacyUsers, { ordered: false });
+  }
+
+  if (!config) {
+    const legacySettings = legacyData.settings || {};
+    if (legacySettings.requiredChannel && !Array.isArray(legacySettings.requiredChannels)) {
+      legacySettings.requiredChannels = [legacySettings.requiredChannel];
+    }
+    config = await BotConfig.create({
+      configKey: 'main_config',
+      channels: legacySettings.requiredChannels || [],
+      settings: legacySettings,
+      stats: legacyData.stats || { postsSent: 0, broadcastsSent: 0 },
+      withdrawals: legacyData.withdrawals || []
+    });
+    config = config.toObject();
+  }
+
+  const accounts = await User.find({}).lean();
+  data.users = Object.fromEntries(accounts.map((account) => [String(account.telegramId), accountFromMongo(account)]));
+  data.settings = { ...data.settings, ...(config.settings || {}) };
+  data.settings.requiredChannels = config.channels?.length ? config.channels : (data.settings.requiredChannels || []);
+  data.stats = { ...data.stats, ...(config.stats || {}) };
+  data.withdrawals = config.withdrawals || [];
+  data.settings.requiredChannels ||= [];
+  data.settings.premiumCardNumber ||= '9860 0803 9258 5933';
+  data.settings.premiumPrice ||= 10000;
+  data.settings.captchaReward ||= 1000;
+  data.settings.minimumWithdrawal ||= 10000;
 }
 
 function userData(userId) {
@@ -299,6 +417,34 @@ function userData(userId) {
 
 function userLanguage(ctx) {
   return userData(ctx.from.id).language || 'uz';
+}
+
+async function ensureUserInMongo(ctx, includeReferral = false) {
+  const telegramId = Number(ctx.from.id);
+  const referralValue = Number(ctx.startPayload);
+  const referredBy = includeReferral && Number.isSafeInteger(referralValue) && referralValue !== telegramId
+    ? referralValue
+    : null;
+  const update = {
+    $set: {
+      username: ctx.from.username || '',
+      nickname: ctx.from.first_name || ctx.from.last_name || ''
+    },
+    $setOnInsert: {
+      telegramId,
+      joinedAt: new Date(),
+      referredBy,
+      balance: 0
+    }
+  };
+  const document = await User.findOneAndUpdate({ telegramId }, update, {
+    upsert: true,
+    new: true,
+    setDefaultsOnInsert: true
+  }).lean();
+  data.users[String(telegramId)] = accountFromMongo(document);
+  userData(telegramId);
+  return data.users[String(telegramId)];
 }
 
 function tr(ctx, key, fallback = key) {
@@ -351,17 +497,21 @@ function subscriptionKeyboard(ctx, channel) {
   ]);
 }
 
-function statsText() {
-  const users = Object.values(data.users || {});
-  const channels = users.reduce((total, user) => total + (user.channels?.length || 0), 0);
+async function statsText() {
+  const totalUsers = await User.countDocuments();
+  const channelResult = await User.aggregate([
+    { $project: { channelCount: { $size: { $ifNull: ['$channels', []] } } } },
+    { $group: { _id: null, total: { $sum: '$channelCount' } } }
+  ]);
+  const channels = channelResult[0]?.total || 0;
   const posts = data.stats.postsSent || 0;
   const broadcasts = data.stats.broadcastsSent || 0;
-  return { uz: `📊 Bot statistikasi\n\n👤 Barcha foydalanuvchilar: ${users.length}\n📢 Barcha kanallar: ${channels}\n📨 Yuborilgan postlar: ${posts}\n📣 Broadcastlar: ${broadcasts}`, en: `📊 Bot statistics\n\n👤 All users: ${users.length}\n📢 All channels: ${channels}\n📨 Posts sent: ${posts}\n📣 Broadcasts: ${broadcasts}`, ru: `📊 Статистика бота\n\n👤 Все пользователи: ${users.length}\n📢 Все каналы: ${channels}\n📨 Отправлено постов: ${posts}\n📣 Рассылки: ${broadcasts}`, tr: `📊 Bot istatistikası\n\n👤 Tüm kullanıcılar: ${users.length}\n📢 Tüm kanallar: ${channels}\n📨 Gönderilen gönderiler: ${posts}\n📣 Yayınlar: ${broadcasts}`, ar: `📊 إحصائيات البوت\n\n👤 جميع المستخدمين: ${users.length}\n📢 جميع القنوات: ${channels}\n📨 المنشورات المرسلة: ${posts}\n📣 الإرسالات: ${broadcasts}`, zh: `📊 机器人统计\n\n👤 用户总数：${users.length}\n📢 频道总数：${channels}\n📨 已发送帖子：${posts}\n📣 广播：${broadcasts}`, ko: `📊 봇 통계\n\n👤 전체 사용자: ${users.length}\n📢 전체 채널: ${channels}\n📨 보낸 게시물: ${posts}\n📣 방송: ${broadcasts}`, tg: `📊 Омори бот\n\n👤 Ҳамаи корбарон: ${users.length}\n📢 Ҳамаи каналҳо: ${channels}\n📨 Постҳои фиристодашуда: ${posts}\n📣 Ирсолҳо: ${broadcasts}` };
+  return { uz: `📊 Bot statistikasi\n\n👤 Barcha foydalanuvchilar: ${totalUsers}\n📢 Barcha kanallar: ${channels}\n📨 Yuborilgan postlar: ${posts}\n📣 Broadcastlar: ${broadcasts}`, en: `📊 Bot statistics\n\n👤 All users: ${totalUsers}\n📢 All channels: ${channels}\n📨 Posts sent: ${posts}\n📣 Broadcasts: ${broadcasts}`, ru: `📊 Статистика бота\n\n👤 Все пользователи: ${totalUsers}\n📢 Все каналы: ${channels}\n📨 Отправлено постов: ${posts}\n📣 Рассылки: ${broadcasts}`, tr: `📊 Bot istatistikası\n\n👤 Tüm kullanıcılar: ${totalUsers}\n📢 Tüm kanallar: ${channels}\n📨 Gönderilen gönderiler: ${posts}\n📣 Yayınlar: ${broadcasts}`, ar: `📊 إحصائيات البوت\n\n👤 جميع المستخدمين: ${totalUsers}\n📢 جميع القنوات: ${channels}\n📨 المنشورات المرسلة: ${posts}\n📣 الإرسالات: ${broadcasts}`, zh: `📊 机器人统计\n\n👤 用户总数：${totalUsers}\n📢 频道总数：${channels}\n📨 已发送帖子：${posts}\n📣 广播：${broadcasts}`, ko: `📊 봇 통계\n\n👤 전체 사용자: ${totalUsers}\n📢 전체 채널: ${channels}\n📨 보낸 게시물: ${posts}\n📣 방송: ${broadcasts}`, tg: `📊 Омори бот\n\n👤 Ҳамаи корбарон: ${totalUsers}\n📢 Ҳамаи каналҳо: ${channels}\n📨 Постҳои фиристодашуда: ${posts}\n📣 Ирсолҳо: ${broadcasts}` };
 }
 
 async function requiredSubscription(ctx) {
   if (isAdmin(ctx)) return true;
-  const channels = getRequiredChannels();
+  const channels = await getRequiredChannels();
   if (!channels.length) return true;
 
   for (const channel of channels) {
@@ -392,7 +542,9 @@ async function checkRequiredSubscriptionChannel(ctx, username) {
   return { id: chat.id, title: chat.title || username, username: `@${chat.username}` };
 }
 
-function getRequiredChannels() {
+async function getRequiredChannels() {
+  const config = await BotConfig.findOne({ configKey: 'main_config' }, { channels: 1 }).lean();
+  if (config?.channels) return config.channels;
   const list = Array.isArray(data.settings?.requiredChannels) ? data.settings.requiredChannels : [];
   if (data.settings?.requiredChannel && !list.some((item) => item.id === data.settings.requiredChannel.id)) {
     list.push(data.settings.requiredChannel);
@@ -400,8 +552,8 @@ function getRequiredChannels() {
   return list;
 }
 
-function formatRequiredChannelList() {
-  const channels = getRequiredChannels();
+async function formatRequiredChannelList() {
+  const channels = await getRequiredChannels();
   if (!channels.length) return 'Majburiy obuna kanallari yo\'q.';
   return channels.map((channel) => `${channel.title || channel.username} (${channel.username || ''})`).join('\n');
 }
@@ -422,16 +574,17 @@ async function sendBroadcastToChat(ctx, chatId, post, replyMarkup) {
 }
 
 async function broadcastPost(ctx, post) {
-  const userIds = new Set(Object.keys(data.users || {}));
+  const accounts = await User.find({}, { telegramId: 1, channels: 1 }).lean();
+  const userIds = new Set(accounts.map((account) => String(account.telegramId)));
   const channelIds = new Set();
 
-  for (const account of Object.values(data.users || {})) {
+  for (const account of accounts) {
     for (const channel of account.channels || []) {
       if (channel?.id) channelIds.add(String(channel.id));
     }
   }
 
-  for (const channel of getRequiredChannels()) {
+  for (const channel of await getRequiredChannels()) {
     if (channel?.id) channelIds.add(String(channel.id));
   }
 
@@ -451,7 +604,7 @@ async function broadcastPost(ctx, post) {
   for (const chatId of userIds) {
     try {
       let canSend = true;
-      for (const required of getRequiredChannels()) {
+      for (const required of await getRequiredChannels()) {
         if (!required?.id) continue;
         try {
           const member = await ctx.telegram.getChatMember(required.id, Number(chatId));
@@ -609,14 +762,6 @@ function normalizePersonalId(value) {
   return input.replace(/\D/g, '');
 }
 
-function findUserByPersonalId(value) {
-  const target = String(value);
-  for (const [key, user] of Object.entries(data.users || {})) {
-    if (String(user.personalId || user.id || '').trim() === target) return { key, user };
-  }
-  return null;
-}
-
 function buildUserProfileText(user, fromId) {
   return `👤 Foydalanuvchi profili\n\n` +
     `Username: ${user.username || user.nickname || '—'}\n` +
@@ -642,12 +787,11 @@ async function chargeOrAllowPost(ctx) {
   return { ok: true };
 }
 
-function findUserByPersonalId(id) {
+async function findUserByPersonalId(id) {
   const target = String(id).trim();
-  for (const [key, account] of Object.entries(data.users || {})) {
-    if (String(account.personalId) === target) return { key, account };
-  }
-  return null;
+  const account = await User.findOne({ personalId: Number(target) }).lean();
+  if (!account) return null;
+  return { key: String(account.telegramId), account: accountFromMongo(account) };
 }
 
 function buildProfileText(ctx) {
@@ -663,11 +807,10 @@ function buildProfileText(ctx) {
 }
 
 async function handleStart(ctx) {
-  const account = userData(ctx.from.id);
-  account.username = ctx.from.username || '';
-  account.nickname = ctx.from.first_name || ctx.from.last_name || '';
+  const account = await ensureUserInMongo(ctx, true);
   if (!account.language) {
     account.language = 'uz';
+    await User.updateOne({ telegramId: Number(ctx.from.id) }, { $set: { language: account.language } });
   }
   saveData();
   reset(ctx);
@@ -784,10 +927,10 @@ function reset(ctx) {
 bot.use(session());
 
 bot.use(async (ctx, next) => {
-  if (ctx.from) {
-    const wasExisting = Boolean(data.users?.[String(ctx.from.id)]);
-    userData(ctx.from.id);
-    saveData();
+  const isStart = ctx.message?.text === '/start';
+  if (ctx.from && !isStart) {
+    const wasExisting = Boolean(await User.exists({ telegramId: Number(ctx.from.id) }));
+    await ensureUserInMongo(ctx);
     if (!wasExisting && ctx.session) {
       ctx.session.justCreated = true;
     }
@@ -807,7 +950,6 @@ bot.use(async (ctx, next) => {
     return originalReply(enriched, ...args);
   };
   const callbackData = ctx.callbackQuery?.data;
-  const isStart = ctx.message?.text === '/start';
   const isSettings = ctx.message?.text === '/settings';
   if (isStart || isSettings || callbackData?.startsWith('language:') || callbackData === 'check_subscription' || isAdmin(ctx)) return next();
 
@@ -885,7 +1027,7 @@ bot.action(/^admin:message_user:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   const targetId = normalizePersonalId(ctx.match[1]);
-  const found = findUserByPersonalId(targetId);
+  const found = await findUserByPersonalId(targetId);
   if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
 
   ctx.session = { step: 'admin_user_message', targetKey: found.key, targetPersonalId: targetId };
@@ -933,10 +1075,18 @@ bot.action(/^admin:withdrawal_(approve|reject):(\d+)$/, async (ctx) => {
   const request = data.withdrawals.find((item) => String(item.id) === ctx.match[2]);
   if (!request || request.status !== 'pending') return ctx.reply("Bu so'rov allaqachon ko'rib chiqilgan.", adminKeyboard(ctx));
   const account = userData(request.userId);
-  request.status = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
-  account.pendingWithdrawal = null;
-  if (request.status === 'rejected') account.balance += request.amount;
-  if (request.status === 'approved') account.totalWithdrawn += request.amount;
+  const requestedStatus = ctx.match[1] === 'approve' ? 'approved' : 'rejected';
+  const update = requestedStatus === 'rejected'
+    ? { $set: { pendingWithdrawal: null }, $inc: { balance: request.amount } }
+    : { $set: { pendingWithdrawal: null }, $inc: { totalWithdrawn: request.amount } };
+  const updatedAccount = await User.findOneAndUpdate(
+    { telegramId: request.userId, pendingWithdrawal: request.id },
+    update,
+    { new: true }
+  ).lean();
+  if (!updatedAccount) return ctx.reply('Bu so\'rov allaqachon ko\'rib chiqilgan.', adminKeyboard(ctx));
+  request.status = requestedStatus;
+  data.users[String(request.userId)] = accountFromMongo(updatedAccount);
   saveData();
   try {
     await originalSendMessage(request.userId, request.status === 'approved'
@@ -1011,7 +1161,8 @@ bot.action(/^admin:premium_reject:(\d+)$/, async (ctx) => {
 bot.action('admin:stats', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  return ctx.reply(statsText()[userLanguage(ctx)] || statsText().uz, adminKeyboard(ctx));
+  const statistics = await statsText();
+  return ctx.reply(statistics[userLanguage(ctx)] || statistics.uz, adminKeyboard(ctx));
 });
 
 bot.action('admin:subscription', async (ctx) => {
@@ -1024,7 +1175,7 @@ bot.action('admin:subscription', async (ctx) => {
 bot.action('admin:required_list', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  return ctx.reply(formatRequiredChannelList(), adminKeyboard(ctx));
+  return ctx.reply(await formatRequiredChannelList(), adminKeyboard(ctx));
 });
 
 bot.action('admin:subscription_off', async (ctx) => {
@@ -1032,6 +1183,11 @@ bot.action('admin:subscription_off', async (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
   data.settings.requiredChannels = [];
   data.settings.requiredChannel = undefined;
+  await BotConfig.findOneAndUpdate(
+    { configKey: 'main_config' },
+    { $set: { channels: [], 'settings.requiredChannels': [] }, $unset: { 'settings.requiredChannel': 1 } },
+    { upsert: true, new: true }
+  );
   saveData();
   return ctx.reply('✅ Majburiy obuna o\'chirildi.', adminKeyboard(ctx));
 });
@@ -1039,7 +1195,7 @@ bot.action('admin:subscription_off', async (ctx) => {
 bot.action('admin:required_list', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
-  return ctx.reply(formatRequiredChannelList(), adminKeyboard(ctx));
+  return ctx.reply(await formatRequiredChannelList(), adminKeyboard(ctx));
 });
 
 bot.action('admin:premium_settings', async (ctx) => {
@@ -1302,10 +1458,13 @@ bot.on('text', async (ctx) => {
     if (!/^\d+$/.test(trimmedText) || Number(trimmedText) !== Number(sessionState.captchaAnswer)) {
       return ctx.reply('❌ Javob noto\'g\'ri. Yangi captcha olish uchun tugmani bosing.', earningKeyboard());
     }
-    const account = userData(ctx.from.id);
-    account.captchaSolved += 1;
-    account.balance += Number(data.settings.captchaReward) || 1000;
-    saveData();
+    const reward = Number(data.settings.captchaReward) || 1000;
+    const updatedAccount = await User.findOneAndUpdate(
+      { telegramId: Number(ctx.from.id) },
+      { $inc: { captchaSolved: 1, balance: reward } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+    data.users[String(ctx.from.id)] = accountFromMongo(updatedAccount);
     const nextCaptcha = createCaptcha();
     sessionState.captchaAnswer = nextCaptcha.answer;
     sessionState.step = 'earning_captcha';
@@ -1350,8 +1509,15 @@ bot.on('text', async (ctx) => {
       status: 'pending',
       createdAt: new Date().toISOString()
     };
-    account.balance -= amount;
-    account.pendingWithdrawal = request.id;
+    const reservedAccount = await User.findOneAndUpdate(
+      { telegramId: Number(ctx.from.id), pendingWithdrawal: null, balance: { $gte: amount } },
+      { $inc: { balance: -amount }, $set: { pendingWithdrawal: request.id } },
+      { new: true }
+    ).lean();
+    if (!reservedAccount) {
+      return ctx.reply('❌ Balans o\'zgargan yoki boshqa so\'rov faol. Qaytadan urinib ko\'ring.', earningKeyboard());
+    }
+    data.users[String(ctx.from.id)] = accountFromMongo(reservedAccount);
     data.withdrawals.push(request);
     saveData();
     try {
@@ -1359,8 +1525,12 @@ bot.on('text', async (ctx) => {
         reply_markup: withdrawalKeyboard(request.id).reply_markup
       });
     } catch (error) {
-      account.balance += request.amount;
-      account.pendingWithdrawal = null;
+      const restoredAccount = await User.findOneAndUpdate(
+        { telegramId: Number(ctx.from.id), pendingWithdrawal: request.id },
+        { $inc: { balance: request.amount }, $set: { pendingWithdrawal: null } },
+        { new: true }
+      ).lean();
+      if (restoredAccount) data.users[String(ctx.from.id)] = accountFromMongo(restoredAccount);
       data.withdrawals = data.withdrawals.filter((item) => item.id !== request.id);
       saveData();
       console.error('Withdrawal request notification failed:', error.response?.description || error.message);
@@ -1421,6 +1591,11 @@ bot.on('text', async (ctx) => {
         data.settings.requiredChannels.push(channel);
       }
       data.settings.requiredChannel = channel;
+      await BotConfig.findOneAndUpdate(
+        { configKey: 'main_config' },
+        { $set: { channels: data.settings.requiredChannels, 'settings.requiredChannels': data.settings.requiredChannels, 'settings.requiredChannel': channel } },
+        { upsert: true, new: true }
+      );
       saveData();
       reset(ctx);
       return ctx.reply(`✅ ${channel.title} majburiy obuna kanali qilib sozlandi.`, adminKeyboard(ctx));
@@ -1475,7 +1650,7 @@ bot.on('text', async (ctx) => {
   if (sessionState.step === 'admin_user_search') {
     if (!isAdmin(ctx)) return ctx.reply('Ruxsat yo\'q.');
     const target = normalizePersonalId(trimmedText);
-    const found = findUserByPersonalId(target);
+    const found = await findUserByPersonalId(target);
     if (!found) return ctx.reply('Bunday foydalanuvchi topilmadi.', adminKeyboard(ctx));
     const account = found.account;
     const detail = `👤 User ma\'lumotlari\n\n` +
@@ -1526,14 +1701,27 @@ async function setupBotAbout() {
   }
 }
 
-bot.launch()
-  .then(async () => {
+async function startBot() {
+  await hydrateFromMongo();
+  await bot.launch();
+  try {
     console.log('Bot ishga tushdi.');
     await setupBotAbout();
-  })
-  .catch((error) => {
-    console.error('Bot launch failed:', error);
-  });
+  } catch (error) {
+    console.error('Bot setup failed:', error);
+  }
+}
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+startBot().catch((error) => {
+  console.error('Bot startup failed:', error);
+  process.exitCode = 1;
+});
+
+process.once('SIGINT', async () => {
+  bot.stop('SIGINT');
+  await mongoose.disconnect();
+});
+process.once('SIGTERM', async () => {
+  bot.stop('SIGTERM');
+  await mongoose.disconnect();
+});
