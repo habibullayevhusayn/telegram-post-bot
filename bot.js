@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.TZ = 'Asia/Tashkent';
 const mongoose = require('mongoose');
 
 const mongoUri = process.env.MONGODB_URI;
@@ -25,6 +26,7 @@ const userSchema = new mongoose.Schema({
   publishedPosts: { type: Number, default: 0 },
   publishedChannels: { type: Number, default: 0 },
   lastPublishedAt: { type: Date, default: null },
+  postStats: { type: Array, default: [] },
   profileSeen: { type: Boolean, default: false },
 }, { versionKey: false });
 
@@ -72,8 +74,30 @@ if (!token) {
 }
 
 const bot = new Telegraf(token);
+const BOT_TIMEZONE = 'Asia/Tashkent';
 const PREMIUM_EMOJI_TAG = '<tg-emoji emoji-id="5084974483685507801">💜</tg-emoji>';
 const CANCEL_EMOJI_TAG = '<tg-emoji emoji-id="5199785165735367039">⚡️</tg-emoji>';
+
+async function safeAnswerCbQuery(ctx) {
+  if (!ctx.callbackQuery) return;
+  try {
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.warn('Callback answer failed:', error.response?.description || error.message);
+  }
+}
+
+bot.use(async (ctx, next) => {
+  try {
+    return await next();
+  } catch (error) {
+    console.error(`Update ${ctx.updateType} failed:`, error.response?.description || error.message);
+    await safeAnswerCbQuery(ctx);
+    if (ctx?.reply) {
+      await ctx.reply('Texnik xatolik yuz berdi. Qaytadan urinib ko\'ring.').catch(() => {});
+    }
+  }
+});
 
 function prefixPremiumEmojiIfMissing(text) {
   if (typeof text !== 'string') return text;
@@ -333,6 +357,7 @@ function userData(userId) {
       publishedPosts: 0,
       publishedChannels: 0,
       lastPublishedAt: null,
+      postStats: [],
       profileSeen: false
     };
   }
@@ -345,6 +370,7 @@ function userData(userId) {
   data.users[key].publishedPosts ||= 0;
   data.users[key].publishedChannels ||= 0;
   data.users[key].lastPublishedAt ||= null;
+  data.users[key].postStats ||= [];
   data.users[key].profileSeen ??= false;
 
   if (!data.users[key].personalId || String(data.users[key].personalId).length !== 7) {
@@ -408,12 +434,12 @@ function isAdmin(ctx) {
 
 function mainKeyboard(ctx) {
   const keyboard = [
-    [tr(ctx, 'settings'), tr(ctx, 'channels')],
-    [tr(ctx, 'addChannel')],
+    [tr(ctx, 'channels'), tr(ctx, 'addChannel')],
     ['📊 Post statistikasi'],
     ['👤 Profilim', '💎 Premium']
   ];
   if (isAdmin(ctx)) keyboard.push([tr(ctx, 'admin')]);
+  keyboard.push([tr(ctx, 'settings')]);
   return Markup.keyboard(keyboard).resize();
 }
 
@@ -567,7 +593,7 @@ async function broadcastPost(ctx, post) {
 
   data.stats.broadcastsSent += 1;
   data.stats.postsSent += sent;
-  saveData();
+  await saveData();
   return sent;
 }
 
@@ -890,12 +916,13 @@ function premiumStatsText(ctx) {
   const account = userData(ctx.from.id);
   if (!account.premium) return 'Post statistikasi Premium foydalanuvchilar uchun mavjud.';
   const lastPublished = account.lastPublishedAt
-    ? new Date(account.lastPublishedAt).toLocaleString('uz-UZ')
+    ? new Date(account.lastPublishedAt).toLocaleString('uz-UZ', { timeZone: BOT_TIMEZONE })
     : 'Hali post yuborilmagan';
   return `📊 Post statistikasi\n\n` +
     `Yuborilgan postlar: ${account.publishedPosts || 0} ta\n` +
     `Kanallarga yuborilgan nusxalar: ${account.publishedChannels || 0} ta\n` +
     `Saqlangan shablonlar: ${account.templates?.length || 0} ta\n` +
+    `Saqlangan statistika yozuvlari: ${account.postStats?.length || 0} ta\n` +
     `Oxirgi post: ${lastPublished}`;
 }
 
@@ -1474,17 +1501,38 @@ bot.action('publish', async (ctx) => {
 
   const buttons = ctx.session.previewButtons || postButtons(post);
   const replyMarkup = Markup.inlineKeyboard(buttons).reply_markup;
-  for (const channel of channels) {
-    await sendPostToChat(ctx, channel.id, post, replyMarkup);
+  const results = await Promise.allSettled(
+    channels.map((channel) => sendPostToChat(ctx, channel.id, post, replyMarkup))
+  );
+  const sentChannels = channels.filter((channel, index) => results[index].status === 'fulfilled');
+  for (const result of results.filter((item) => item.status === 'rejected')) {
+    console.error('Post send failed:', result.reason?.response?.description || result.reason?.message);
+  }
+  if (!sentChannels.length) {
+    return ctx.reply('❌ Postni hech qaysi kanalga yuborib bo\'lmadi. Kanal ruxsatlarini tekshiring.', mainKeyboard(ctx));
   }
   const account = userData(ctx.from.id);
-  account.publishedPosts = Number(account.publishedPosts || 0) + 1;
-  account.publishedChannels = Number(account.publishedChannels || 0) + channels.length;
-  account.lastPublishedAt = new Date();
-  data.stats.postsSent += channels.length;
-  saveData();
+  const publishedAt = new Date();
+  const statEntry = {
+    publishedAt,
+    channelIds: sentChannels.map((channel) => channel.id),
+    channelCount: sentChannels.length,
+    mediaType: post.mediaType || (post.photo ? 'photo' : 'text')
+  };
+  const updatedAccount = await User.findOneAndUpdate(
+    { telegramId: Number(ctx.from.id) },
+    {
+      $inc: { publishedPosts: 1, publishedChannels: sentChannels.length },
+      $set: { lastPublishedAt: publishedAt },
+      $push: { postStats: { $each: [statEntry], $slice: -100 } }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+  data.users[String(ctx.from.id)] = accountFromMongo(updatedAccount);
+  data.stats.postsSent += sentChannels.length;
+  await saveData();
   reset(ctx);
-  return ctx.reply(`✅ Post ${channels.length} ta kanalga muvaffaqiyatli yuborildi.`, mainKeyboard(ctx));
+  return ctx.reply(`✅ Post ${sentChannels.length} ta kanalga muvaffaqiyatli yuborildi.`, mainKeyboard(ctx));
 });
 
 bot.action('cancel', async (ctx) => {
@@ -1631,7 +1679,8 @@ bot.on('text', async (ctx) => {
 });
 
 bot.catch((error, ctx) => {
-  console.error(`Update ${ctx.updateType} failed:`, error);
+  console.error(`Update ${ctx.updateType} failed:`, error.response?.description || error.message);
+  safeAnswerCbQuery(ctx);
   if (ctx?.reply) {
     ctx.reply('Texnik xatolik yuz berdi. Keyinroq qayta urinib ko\'ring.').catch(() => {});
   }
