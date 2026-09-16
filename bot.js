@@ -467,9 +467,13 @@ function adminUserSearchResultKeyboard(personalId) {
   ]);
 }
 
-function subscriptionKeyboard(ctx, channel) {
+function subscriptionKeyboard(ctx, channels) {
+  const requiredChannels = Array.isArray(channels) ? channels : [channels];
   return Markup.inlineKeyboard([
-    [Markup.button.url(localizeReply(ctx, '📢 Kanalga obuna bo\'lish'), `https://t.me/${channel.username.replace(/^@/, '')}`)],
+    ...requiredChannels.map((channel) => [Markup.button.url(
+      `${localizeReply(ctx, '📢 Kanalga obuna bo\'lish')} ${channel.title || channel.username}`,
+      `https://t.me/${channel.username.replace(/^@/, '')}`
+    )]),
     [Markup.button.callback(localizeReply(ctx, '✅ Obunani tekshirish'), 'check_subscription')]
   ]);
 }
@@ -491,21 +495,22 @@ async function requiredSubscription(ctx) {
   const channels = await getRequiredChannels();
   if (!channels.length) return true;
 
+  const notSubscribed = [];
   for (const channel of channels) {
     try {
       const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
       if (!['creator', 'administrator', 'member'].includes(member.status)) {
-        await ctx.reply(`Botdan foydalanish uchun ${channel.title || channel.username} kanaliga obuna bo\'ling.`, subscriptionKeyboard(ctx, channel));
-        return false;
+        notSubscribed.push(channel);
       }
     } catch (error) {
       console.error('Subscription check failed:', error.response?.description || error.message);
-      await ctx.reply(`Botdan foydalanish uchun ${channel.title || channel.username} kanaliga obuna bo\'ling.`, subscriptionKeyboard(ctx, channel));
-      return false;
+      notSubscribed.push(channel);
     }
   }
 
-  return true;
+  if (!notSubscribed.length) return true;
+  await ctx.reply('Botdan foydalanish uchun majburiy kanallarga obuna bo\'ling.', subscriptionKeyboard(ctx, notSubscribed));
+  return false;
 }
 
 async function checkRequiredSubscriptionChannel(ctx, username) {
@@ -879,6 +884,7 @@ async function handleStart(ctx) {
   }
   saveData();
   reset(ctx);
+  if (!(await requiredSubscription(ctx))) return;
   if (!account.language) return ctx.reply(tr(ctx, 'welcome'), languageKeyboard());
   return ctx.reply('<tg-emoji emoji-id="5454380420336466255">✋</tg-emoji> Assalomu alaykum! Kanal postlarini boshqarish botiga xush kelibsiz.', {
     parse_mode: 'HTML',
@@ -1102,7 +1108,6 @@ bot.action('check_subscription', async (ctx) => {
   if (await requiredSubscription(ctx)) {
     return ctx.reply('✅ Obuna tasdiqlandi. Botdan foydalanishingiz mumkin.', mainKeyboard(ctx));
   }
-  return ctx.reply('Botdan foydalanish uchun majburiy kanallarga obuna bo\'ling.', mainKeyboard(ctx));
 });
 
 bot.action('admin:user_search', async (ctx) => {
