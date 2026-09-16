@@ -1454,7 +1454,7 @@ bot.action('save_template', async (ctx) => {
   });
   account.templates = account.templates.slice(-20);
   saveData();
-  return ctx.reply('✅ Post shablon sifatida saqlandi.', composerKeyboard(ctx));
+  return ctx.reply('✅ Post shablon sifatida saqlandi', composerKeyboard(ctx));
 });
 
 bot.action('templates', async (ctx) => {
@@ -1674,7 +1674,7 @@ bot.on('text', async (ctx) => {
   }
 
   if (sessionState.step === 'button_url') {
-    if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki https:// bilan boshlanishi kerak. Qayta yuboring:');
+    if (!isUrl(trimmedText)) return ctx.reply('Havola http:// yoki http]s:// bilan boshlanishi kerak. Qayta yuboring:');
     sessionState.pendingButtonUrl = trimmedText;
     sessionState.step = 'button_color';
     return ctx.reply('Tugma rangini tanlang:', buttonColorKeyboard(ctx));
