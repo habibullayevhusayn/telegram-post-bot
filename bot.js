@@ -1454,7 +1454,7 @@ bot.action('save_template', async (ctx) => {
   });
   account.templates = account.templates.slice(-20);
   saveData();
-  return ctx.reply('✅ Post shablon sifatida saqlandi.', composerKeyboard(ctx));
+  return ctx.reply('✅ Post shablon sifatida saqlandi', composerKeyboard(ctx));
 });
 
 bot.action('templates', async (ctx) => {
