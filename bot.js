@@ -408,7 +408,7 @@ async function ensureUserInMongo(ctx, includeReferral = false) {
   };
   const document = await User.findOneAndUpdate({ telegramId }, update, {
     upsert: true,
-    new: true,
+    returnDocument: 'after',
     setDefaultsOnInsert: true
   }).lean();
   data.users[String(telegramId)] = accountFromMongo(document);
@@ -1565,7 +1565,7 @@ bot.action('publish', async (ctx) => {
       $set: { lastPublishedAt: publishedAt },
       $push: { postStats: { $each: [statEntry], $slice: -100 } }
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
   ).lean();
   data.users[String(ctx.from.id)] = accountFromMongo(updatedAccount);
   data.stats.postsSent += sentChannels.length;
